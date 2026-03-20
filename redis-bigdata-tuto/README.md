@@ -15,15 +15,15 @@ Une API de recommandation de films reçoit des milliers de requêtes par seconde
 
 ### Ce que ce tutoriel illustre (liens avec le cours)
 
-| Concept du cours | Implémentation dans ce projet |
-|---|---|
-| NoSQL key-value | Redis stocke `movie:{id}` → JSON |
-| Vélocité (V BigData) | Cache réduit la latence de 10x à 50x |
+| Concept du cours        | Implémentation dans ce projet                    |
+| ----------------------- | ------------------------------------------------ |
+| NoSQL key-value         | Redis stocke `movie:{id}` → JSON                 |
+| Vélocité (V BigData)    | Cache réduit la latence de 10x à 50x             |
 | Scalabilité horizontale | Redis Cluster ready (architecture `allkeys-lru`) |
-| CAP Theorem | Redis = AP (Available + Partition Tolerant) |
-| Dénormalisation | Documents MongoDB enrichis (avg_rating embarqué) |
-| TTL (Time To Live) | Expiration automatique des entrées stales |
-| Sorted Sets | Leaderboard des films les plus consultés |
+| CAP Theorem             | Redis = AP (Available + Partition Tolerant)      |
+| Dénormalisation         | Documents MongoDB enrichis (avg_rating embarqué) |
+| TTL (Time To Live)      | Expiration automatique des entrées stales        |
+| Sorted Sets             | Leaderboard des films les plus consultés         |
 
 ---
 
@@ -51,6 +51,7 @@ Client (Python / curl)
 ```
 
 **Flux de données :**
+
 1. Requête entrante → vérification rate limit (Redis INCR)
 2. Lecture clé `movie:{id}` dans Redis → **cache hit** → réponse < 2ms
 3. Si absent → requête MongoDB → calcul avg_rating → **populate Redis** → réponse ~50ms
@@ -60,13 +61,13 @@ Client (Python / curl)
 
 ## Stack technique
 
-| Service | Version | Rôle |
-|---|---|---|
-| **Redis** | 7-alpine | Cache key-value, rate limiter, leaderboard |
-| **MongoDB** | 7 | Source de données principale |
-| **FastAPI** | 0.111 | API REST asynchrone |
-| **Python** | 3.11 | Scripts de benchmark et ingestion |
-| **Docker Compose** | v2 | Orchestration locale |
+| Service            | Version  | Rôle                                       |
+| ------------------ | -------- | ------------------------------------------ |
+| **Redis**          | 7-alpine | Cache key-value, rate limiter, leaderboard |
+| **MongoDB**        | 7        | Source de données principale               |
+| **FastAPI**        | 0.111    | API REST asynchrone                        |
+| **Python**         | 3.11     | Scripts de benchmark et ingestion          |
+| **Docker Compose** | v2       | Orchestration locale                       |
 
 ---
 
@@ -91,6 +92,7 @@ docker-compose up --build
 ```
 
 Les trois services démarrent :
+
 - FastAPI → http://localhost:8000
 - Redis → localhost:6379
 - MongoDB → localhost:27017
@@ -146,6 +148,90 @@ Résultat attendu (sur machine standard) :
 └─────────────────┴────────────────────┴───────────────────┴─────────┘
 ```
 
+### 6. Access the Interactive Dashboard
+
+**IMPORTANT**: The tutorial now includes a professional interactive dashboard!
+
+```bash
+# The dashboard is automatically available at:
+http://localhost:8000
+```
+
+**Dashboard Features**:
+
+- 📊 **Real-time Metrics**: Cache hit ratio, memory usage, latency
+- 💻 **Redis Command Executor**: Type Redis commands in the browser
+- 🔍 **Data Inspector**: Browse all keys and their values
+- ⚡ **Performance Lab**: Compare cold vs warm cache speeds
+- 📈 **Live Charts**: Visualize latency trends and leaderboards
+
+**No need for terminal commands anymore!** Everything is clickable and visual.
+
+---
+
+## 📚 Complete Documentation
+
+### Main Files to Read
+
+1. **[TUTORIAL.md](./TUTORIAL.md)** - Full Big Data concepts and theory
+   - Why Redis matters for Big Data
+   - Data modeling and caching strategies
+   - CAP theorem and consistency
+   - Real-world case studies
+
+2. **[USER_GUIDE.md](./USER_GUIDE.md)** - Interactive learning exercises
+   - Dashboard walkthrough
+   - Hands-on Redis commands
+   - Learning challenges
+   - Troubleshooting guide
+
+3. **[CREATIVE_IMPROVEMENTS.md](./CREATIVE_IMPROVEMENTS.md)** - Architecture details
+   - System design
+   - API endpoints
+   - Implementation notes
+
+---
+
+## 🚀 Quick Start (Dashboard Version)
+
+### 1. Start Everything
+
+```bash
+docker-compose up --build
+```
+
+### 2. Load Data
+
+```bash
+pip install -r requirements.txt
+python src/ingest.py
+```
+
+### 3. Open Dashboard
+
+**Browser**: `http://localhost:8000`
+
+### 4. Try the Redis Command Executor
+
+In the **Command Executor** tab:
+
+```redis
+GET movie:1              # Get a cached movie
+ZREVRANGE leaderboard:movies 0 4  # Top 5 movies
+DBSIZE                   # How many keys cached
+```
+
+### 5. Watch the Metrics Update
+
+Dashboard shows real-time:
+
+- Cache hit/miss ratio
+- Memory usage
+- Request latency
+- Top accessed movies
+
+---
+
 ### 6. Visualiser le dashboard
 
 ```bash
@@ -153,6 +239,7 @@ python dashboard/visualize.py
 ```
 
 Génère `dashboard/redis_dashboard.png` avec 4 graphiques :
+
 - Évolution du hit ratio
 - Comparaison latence Redis vs MongoDB
 - Leaderboard (Top 10 films les plus vus)
@@ -198,6 +285,7 @@ ZREVRANGE leaderboard:movies 0 9 WITHSCORES  # Top 10
 ### CAP Theorem et Redis
 
 Redis se positionne comme système **AP** (Available + Partition Tolerant) :
+
 - En mode cluster, Redis préfère rester disponible plutôt que de garantir une cohérence parfaite lors d'une partition réseau.
 - La réplication Redis est **asynchrone** : une panne du master pendant une réplication peut causer une légère perte de données.
 - Pour des cas nécessitant une cohérence forte (CP), Redis propose le mode `WAIT` pour forcer une écriture synchrone sur les répliques.

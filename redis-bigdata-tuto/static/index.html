@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Redis Inspector Pro - Big Data Tutorial</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body>
+    <div class="page-wrapper">
+        <!-- HEADER -->
+        <nav class="navbar navbar-dark bg-gradient sticky-top shadow-sm">
+            <div class="container-fluid">
+                <a class="navbar-brand fw-bold" href="/">
+                    <i class="fas fa-database"></i> Redis Inspector Pro
+                </a>
+                <div class="d-flex align-items-center gap-3">
+                    <div class="status-indicator">
+                        <span class="badge bg-success" id="connectionStatus">Connected</span>
+                    </div>
+                    <button class="btn btn-outline-light btn-sm" data-bs-toggle="modal" data-bs-target="#helpModal">
+                        <i class="fas fa-circle-info"></i> Help
+                    </button>
+                </div>
+            </div>
+        </nav>
+
+        <!-- MAIN CONTAINER -->
+        <div class="container-fluid p-4">
+            <!-- TABS -->
+            <ul class="nav nav-tabs nav-fill mb-4 card-tabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="dashboard-tab" data-bs-toggle="tab" data-bs-target="#dashboard-panel" type="button" role="tab">
+                        <i class="fas fa-chart-line"></i> Dashboard
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="executor-tab" data-bs-toggle="tab" data-bs-target="#executor-panel" type="button" role="tab">
+                        <i class="fas fa-terminal"></i> Command Executor
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="inspector-tab" data-bs-toggle="tab" data-bs-target="#inspector-panel" type="button" role="tab">
+                        <i class="fas fa-magnifying-glass"></i> Data Inspector
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="benchmark-tab" data-bs-toggle="tab" data-bs-target="#benchmark-panel" type="button" role="tab">
+                        <i class="fas fa-bolt"></i> Performance
+                    </button>
+                </li>
+            </ul>
+
+            <!-- TAB CONTENT -->
+            <div class="tab-content">
+                <!-- DASHBOARD TAB -->
+                <div class="tab-pane fade show active" id="dashboard-panel" role="tabpanel">
+                    <div class="row g-4 mb-4">
+                        <!-- CACHE RATIO CARD -->
+                        <div class="col-lg-3 col-md-6">
+                            <div class="card dashboard-card h-100">
+                                <div class="card-body text-center">
+                                    <div class="metric-icon" style="color: #4CAF50;">
+                                        <i class="fas fa-check-circle fa-3x mb-3"></i>
+                                    </div>
+                                    <h6 class="card-title text-muted">Cache Hit Ratio</h6>
+                                    <div class="metric-value" id="hitRatioValue">0%</div>
+                                    <small class="text-muted">
+                                        <span id="hitCount">0</span> hits / <span id="totalCount">0</span> requests
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- MEMORY USAGE CARD -->
+                        <div class="col-lg-3 col-md-6">
+                            <div class="card dashboard-card h-100">
+                                <div class="card-body text-center">
+                                    <div class="metric-icon" style="color: #2196F3;">
+                                        <i class="fas fa-memory fa-3x mb-3"></i>
+                                    </div>
+                                    <h6 class="card-title text-muted">Memory Used</h6>
+                                    <div class="metric-value" id="memoryValue">0 MB</div>
+                                    <small class="text-muted">Peak: <span id="peakMemory">0</span> MB</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- REQUEST LATENCY CARD -->
+                        <div class="col-lg-3 col-md-6">
+                            <div class="card dashboard-card h-100">
+                                <div class="card-body text-center">
+                                    <div class="metric-icon" style="color: #FF9800;">
+                                        <i class="fas fa-hourglass-half fa-3x mb-3"></i>
+                                    </div>
+                                    <h6 class="card-title text-muted">Avg Latency</h6>
+                                    <div class="metric-value" id="latencyValue">0 ms</div>
+                                    <small class="text-muted">Last 100 requests</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- REQUEST RATE CARD -->
+                        <div class="col-lg-3 col-md-6">
+                            <div class="card dashboard-card h-100">
+                                <div class="card-body text-center">
+                                    <div class="metric-icon" style="color: #9C27B0;">
+                                        <i class="fas fa-tachometer-alt fa-3x mb-3"></i>
+                                    </div>
+                                    <h6 class="card-title text-muted">Requests/sec</h6>
+                                    <div class="metric-value" id="rpsValue">0</div>
+                                    <small class="text-muted">Real-time throughput</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- CHARTS ROW -->
+                    <div class="row g-4">
+                        <!-- LATENCY CHART -->
+                        <div class="col-lg-6">
+                            <div class="card chart-card h-100">
+                                <div class="card-header">
+                                    <h6 class="mb-0"><i class="fas fa-chart-line"></i> Request Latency Trend</h6>
+                                </div>
+                                <div class="card-body">
+                                    <canvas id="latencyChart" style="height: 300px;"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- LEADERBOARD CHART -->
+                        <div class="col-lg-6">
+                            <div class="card chart-card h-100">
+                                <div class="card-header">
+                                    <h6 class="mb-0"><i class="fas fa-ranking-star"></i> Top 10 Movies (by views)</h6>
+                                </div>
+                                <div class="card-body">
+                                    <canvas id="leaderboardChart" style="height: 300px;"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row g-4 mt-0">
+                        <!-- MEMORY GAUGE -->
+                        <div class="col-lg-6">
+                            <div class="card chart-card h-100">
+                                <div class="card-header">
+                                    <h6 class="mb-0"><i class="fas fa-chart-pie"></i> Memory Distribution</h6>
+                                </div>
+                                <div class="card-body d-flex align-items-center justify-content-center">
+                                    <canvas id="memoryChart" style="height: 300px; width: 300px;"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- CACHE HIT RATIO GAUGE -->
+                        <div class="col-lg-6">
+                            <div class="card chart-card h-100">
+                                <div class="card-header">
+                                    <h6 class="mb-0"><i class="fas fa-gauge"></i> Cache Efficiency</h6>
+                                </div>
+                                <div class="card-body d-flex align-items-center justify-content-center">
+                                    <canvas id="hitRatioChart" style="height: 300px; width: 300px;"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- COMMAND EXECUTOR TAB -->
+                <div class="tab-pane fade" id="executor-panel" role="tabpanel">
+                    <div class="row">
+                        <div class="col-lg-8">
+                            <div class="card h-100">
+                                <div class="card-header bg-dark text-white">
+                                    <h6 class="mb-0"><i class="fas fa-terminal"></i> Redis CLI Simulator</h6>
+                                    <small class="text-muted d-block mt-2">Type Redis commands like in a real CLI</small>
+                                </div>
+                                <div class="card-body bg-dark command-terminal">
+                                    <div id="terminalOutput" class="terminal-output mb-3"></div>
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-dark text-success" style="border: 1px solid #444;">redis></span>
+                                        <input type="text" id="commandInput" class="form-control bg-dark text-light" placeholder="Type command (e.g., GET movie:1)" style="border: 1px solid #444;">
+                                        <button class="btn btn-primary" id="executeBtn" type="button">Execute</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-4">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0"><i class="fas fa-book"></i> Command Reference</h6>
+                                </div>
+                                <div class="card-body overflow-auto" style="max-height: 600px;">
+                                    <div class="mb-3">
+                                        <h6 class="text-primary">String Commands</h6>
+                                        <small>
+                                            <code>GET key</code> - Get value<br>
+                                            <code>SET key value</code> - Set value<br>
+                                            <code>INCR key</code> - Increment<br>
+                                            <code>DECR key</code> - Decrement
+                                        </small>
+                                    </div>
+                                    <hr>
+                                    <div class="mb-3">
+                                        <h6 class="text-primary">Key Commands</h6>
+                                        <small>
+                                            <code>KEYS *</code> - List all keys<br>
+                                            <code>DEL key</code> - Delete key<br>
+                                            <code>TTL key</code> - Time to live<br>
+                                            <code>EXPIRE key sec</code> - Set expiration
+                                        </small>
+                                    </div>
+                                    <hr>
+                                    <div class="mb-3">
+                                        <h6 class="text-primary">Sorted Set Commands</h6>
+                                        <small>
+                                            <code>ZRANGE key 0 10</code> - Get range<br>
+                                            <code>ZREVRANGE key 0 10</code> - Reverse range<br>
+                                            <code>ZCARD key</code> - Count members<br>
+                                            <code>ZINCRBY key 1 member</code> - Increment score
+                                        </small>
+                                    </div>
+                                    <hr>
+                                    <div class="mb-3">
+                                        <h6 class="text-primary">Hash Commands</h6>
+                                        <small>
+                                            <code>HGET key field</code> - Get field<br>
+                                            <code>HGETALL key</code> - Get all fields<br>
+                                            <code>HSET key field value</code><br>
+                                            <code>HLEN key</code> - Count fields
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- DATA INSPECTOR TAB -->
+                <div class="tab-pane fade" id="inspector-panel" role="tabpanel">
+                    <div class="row g-4">
+                        <div class="col-lg-4">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0"><i class="fas fa-key"></i> Keys in Redis</h6>
+                                </div>
+                                <div class="card-body" style="max-height: 700px; overflow-y: auto;">
+                                    <div id="keysList" class="keys-list">
+                                        <p class="text-muted text-center">Loading keys...</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-8">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0"><i class="fas fa-eye"></i> Key Details</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div id="keyDetails">
+                                        <p class="text-muted text-center">Select a key to view details</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- BENCHMARK TAB -->
+                <div class="tab-pane fade" id="benchmark-panel" role="tabpanel">
+                    <div class="row g-4">
+                        <div class="col-lg-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0"><i class="fas fa-bolt"></i> Performance Comparison</h6>
+                                </div>
+                                <div class="card-body">
+                                    <p class="text-muted mb-3">Compare response times with warm vs cold cache</p>
+                                    <button class="btn btn-danger btn-sm mb-3" id="flushCacheBtn">
+                                        <i class="fas fa-trash"></i> Flush Cache (Cold Start)
+                                    </button>
+                                    <button class="btn btn-success btn-sm mb-3" id="warmCacheBtn">
+                                        <i class="fas fa-fire"></i> Warm Cache
+                                    </button>
+                                    <div id="benchmarkResults">
+                                        <p class="text-muted">Results will appear here...</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0"><i class="fas fa-chart-bar"></i> Latency Comparison</h6>
+                                </div>
+                                <div class="card-body">
+                                    <canvas id="benchmarkChart" style="height: 400px;"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- HELP MODAL -->
+    <div class="modal fade" id="helpModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Redis Inspector Pro - Help</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <h6>What is Redis Inspector Pro?</h6>
+                    <p>An interactive dashboard to explore Redis, a powerful in-memory key-value store used in Big Data systems.</p>
+                    
+                    <h6 class="mt-3">Features:</h6>
+                    <ul>
+                        <li><strong>Dashboard</strong> - Real-time metrics and visualizations</li>
+                        <li><strong>Command Executor</strong> - Run Redis commands directly</li>
+                        <li><strong>Data Inspector</strong> - View what's stored in Redis</li>
+                        <li><strong>Performance</strong> - Compare cache efficiency</li>
+                    </ul>
+
+                    <h6 class="mt-3">Why Redis?</h6>
+                    <p>In Big Data systems, we need <strong>fast access to frequently-accessed data</strong>. Redis provides <strong>sub-millisecond latency</strong> by storing data in RAM instead of disk.</p>
+
+                    <h6 class="mt-3">Key Concepts:</h6>
+                    <ul>
+                        <li><strong>Cache Hit</strong> - Data found in Redis (fast, ~1-2ms)</li>
+                        <li><strong>Cache Miss</strong> - Data not in Redis, must query source (slow, ~50ms)</li>
+                        <li><strong>TTL</strong> - Time To Live: when data expires and is removed</li>
+                        <li><strong>Memory</strong> - Redis uses RAM, which is limited and expensive</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCRIPTS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>
