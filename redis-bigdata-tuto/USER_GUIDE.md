@@ -80,6 +80,8 @@ This is like a **Redis CLI in your browser**. Type any Redis command!
 #### Exercise 1: Explore Cached Movies
 
 ```
+> (Open Performance tab and click "Warm Cache" first)
+
 > KEYS movie:*
 (Returns all movie keys like: movie:1, movie:110, movie:27, ...)
 
@@ -95,6 +97,8 @@ This is like a **Redis CLI in your browser**. Type any Redis command!
 - `KEYS pattern` = find all keys matching pattern
 - `GET key` = retrieve a cached value
 - `TTL key` = time until key expires (in seconds)
+- The integrated Command Executor talks directly to Redis.
+- If `KEYS movie:*` is empty, warm the cache first from the Performance tab.
 
 #### Exercise 2: Check Cache Statistics
 
@@ -212,22 +216,14 @@ Compare how fast Redis is vs MongoDB.
    - This deletes all cached data
    - Next request will be slow (hits MongoDB)
 2. **Make a request** (via Command Executor):
-
-   ```
-   > GET movie:1
-   ```
-
-   - Response: data + slow latency (50ms)
+   - The dashboard triggers one real `/movies/1` API call after flush.
+   - You should observe a high "Cold Cache" value.
 
 3. **Click "Warm Cache"**
    - Rebuilds the most popular movies in cache
 4. **Make the same request again**:
-
-   ```
-   > GET movie:1
-   ```
-
-   - Response: same data + FAST latency (2ms)
+   - After warm-up, the dashboard measures `/movies/1` again.
+   - You should observe a lower "Warm Cache" value.
 
 5. **Watch the chart**: Compare "Cold Cache" vs "Warm Cache" bars
 

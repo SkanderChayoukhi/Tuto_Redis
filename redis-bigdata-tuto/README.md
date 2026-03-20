@@ -102,8 +102,12 @@ Les trois services démarrent :
 Dans un second terminal :
 
 ```bash
-pip install -r requirements.txt
-python src/ingest.py
+# Recommandé (utilise l'environnement du conteneur API)
+docker compose exec api python src/ingest.py
+
+# Alternative locale (si vous avez un venv Python prêt)
+# pip install -r requirements.txt
+# python src/ingest.py
 ```
 
 Cette étape télécharge automatiquement [MovieLens Small](https://grouplens.org/datasets/movielens/latest/) (~1 Mo) et charge les données dans MongoDB.

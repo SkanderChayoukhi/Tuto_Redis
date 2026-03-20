@@ -14,6 +14,14 @@ const state = {
         topMovies: [],
         rps: 0
     },
+    benchmark: {
+        coldMs: 0,
+        warmMs: 0
+    },
+    lastSample: {
+        ts: Date.now(),
+        total: 0
+    },
     charts: {},
     ws: null,
     connected: false
@@ -31,6 +39,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initCharts();
     setupEventListeners();
     startMetricsPolling();
+    startDatasetPolling();
     loadKeysInspector();
 });
 
@@ -211,6 +220,11 @@ function executeCommand() {
 
 // ===== METRICS POLLING =====
 function startMetricsPolling() {
+    fetch('/api/metrics')
+        .then(res => res.json())
+        .then(data => updateMetrics(data))
+        .catch(err => console.error('Metrics error:', err));
+
     setInterval(() => {
         fetch('/api/metrics')
             .then(res => res.json())
@@ -219,6 +233,53 @@ function startMetricsPolling() {
             })
             .catch(err => console.error('Metrics error:', err));
     }, 1000);
+}
+
+function startDatasetPolling() {
+    const refresh = () => {
+        fetch('/api/dataset-status')
+            .then(res => res.json())
+            .then(data => updateDatasetStatus(data))
+            .catch(err => {
+                console.error('Dataset status error:', err);
+                document.getElementById('datasetStatusBadge').className = 'badge bg-danger';
+                document.getElementById('datasetStatusBadge').textContent = 'Unavailable';
+                document.getElementById('datasetHint').textContent = 'Cannot fetch dataset status from API.';
+            });
+    };
+
+    refresh();
+    setInterval(refresh, 5000);
+}
+
+function updateDatasetStatus(data) {
+    const moviesEl = document.getElementById('datasetMovies');
+    const ratingsEl = document.getElementById('datasetRatings');
+    const tagsEl = document.getElementById('datasetTags');
+    const badge = document.getElementById('datasetStatusBadge');
+    const hint = document.getElementById('datasetHint');
+    const updatedAt = document.getElementById('datasetUpdatedAt');
+
+    if (!moviesEl || !ratingsEl || !tagsEl || !badge || !hint || !updatedAt) {
+        return;
+    }
+
+    moviesEl.textContent = data.movies || 0;
+    ratingsEl.textContent = data.ratings || 0;
+    tagsEl.textContent = data.tags || 0;
+
+    if (data.loaded) {
+        badge.className = 'badge bg-success';
+        badge.textContent = 'Loaded';
+        hint.textContent = `MovieLens loaded in ${data.database}. Ready for demos.`;
+    } else {
+        badge.className = 'badge bg-warning text-dark';
+        badge.textContent = 'Not Loaded';
+        hint.textContent = 'Run: docker compose exec api python src/ingest.py';
+    }
+
+    const now = new Date();
+    updatedAt.textContent = `Last update: ${now.toLocaleTimeString()}`;
 }
 
 function updateMetrics(data) {
@@ -233,6 +294,14 @@ function updateMetrics(data) {
     document.getElementById('hitRatioValue').textContent = ratio.toFixed(1) + '%';
     document.getElementById('memoryValue').textContent = data.redis_memory_mb.toFixed(2) + ' MB';
     document.getElementById('peakMemory').textContent = data.redis_peak_memory_mb.toFixed(2);
+
+    const now = Date.now();
+    const elapsedSec = Math.max((now - state.lastSample.ts) / 1000, 0.001);
+    const delta = Math.max((data.total_requests || 0) - state.lastSample.total, 0);
+    const rps = delta / elapsedSec;
+    state.metrics.rps = rps;
+    document.getElementById('rpsValue').textContent = rps.toFixed(2);
+    state.lastSample = { ts: now, total: data.total_requests || 0 };
 
     // Update charts
     updateLatencyChart(data.avg_latency || 0);
@@ -350,22 +419,51 @@ function flushCache() {
 
     fetch('/cache', { method: 'DELETE' })
         .then(res => res.json())
-        .then(data => {
-            addBenchmarkResult('Cold Cache', 'Cache flushed. Next request will measure cold start.');
-        });
+        .then(() => measureRequestLatency(1))
+        .then(latency => {
+            state.benchmark.coldMs = latency;
+            updateBenchmarkChart();
+            addBenchmarkResult('Cold Cache', `${latency.toFixed(2)} ms`);
+        })
+        .catch(err => addBenchmarkResult('Cold Cache Error', err.message));
 }
 
 function warmCache() {
     addBenchmarkResult('Warming Cache', 'Fetching popular items to warm the cache...');
 
-    // Fetch top movies to warm cache
+    const warmups = [];
     for (let i = 1; i <= 10; i++) {
-        fetch(`/movies/${i}`);
+        warmups.push(fetch(`/movies/${i}`));
     }
 
-    setTimeout(() => {
-        addBenchmarkResult('Cache Warmed', 'Top 10 movies are now in cache.');
-    }, 1000);
+    Promise.allSettled(warmups)
+        .then(() => measureRequestLatency(1))
+        .then(latency => {
+            state.benchmark.warmMs = latency;
+            updateBenchmarkChart();
+            addBenchmarkResult('Warm Cache', `${latency.toFixed(2)} ms`);
+        })
+        .catch(err => addBenchmarkResult('Warm Cache Error', err.message));
+}
+
+function updateBenchmarkChart() {
+    benchmarkChart.data.datasets[0].data = [
+        state.benchmark.coldMs || 0,
+        state.benchmark.warmMs || 0
+    ];
+    benchmarkChart.update();
+}
+
+function measureRequestLatency(movieId) {
+    const t0 = performance.now();
+    return fetch(`/movies/${movieId}`)
+        .then(res => {
+            if (!res.ok) {
+                throw new Error(`Request failed with status ${res.status}`);
+            }
+            return res.json();
+        })
+        .then(() => performance.now() - t0);
 }
 
 function addBenchmarkResult(label, value) {

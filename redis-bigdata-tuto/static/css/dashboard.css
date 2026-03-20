@@ -281,6 +281,28 @@ input.form-control {
     font-size: 0.9rem;
 }
 
+/* DATASET STATUS */
+.dataset-stat-box {
+    background: #f8f9fa;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 1rem;
+}
+
+.dataset-stat-label {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+
+.dataset-stat-value {
+    color: var(--text-primary);
+    font-size: 1.8rem;
+    font-weight: 700;
+    font-family: 'Monaco', 'Courier New', monospace;
+}
+
 /* CHARTS */
 canvas {
     max-height: 100%;

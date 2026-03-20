@@ -41,7 +41,8 @@ _metrics = {
     "misses": 0,
     "avg_latency": 0,
     "latencies": [],
-    "total_requests": 0
+    "total_requests": 0,
+    "last_request_ts": 0.0
 }
 
 
@@ -131,6 +132,8 @@ async def get_movie(movie_id: str, request: Request):
     3. Si absent → MongoDB  → populate cache
     """
     ip = request.client.host
+    _metrics["total_requests"] += 1
+    _metrics["last_request_ts"] = time.time()
 
     # ── Rate limiting ──
     if not await rate_limit_check(ip):
@@ -145,6 +148,9 @@ async def get_movie(movie_id: str, request: Request):
 
     if cached:
         latency_ms = round((time.perf_counter() - t0) * 1000, 2)
+        _metrics["latencies"].append(latency_ms)
+        if len(_metrics["latencies"]) > 500:
+            _metrics["latencies"] = _metrics["latencies"][-500:]
         await record_access(movie_id)
         return JSONResponse({**cached, "_source": "redis_cache", "_latency_ms": latency_ms})
 
@@ -166,6 +172,9 @@ async def get_movie(movie_id: str, request: Request):
 
     await cache_set(cache_key, doc)
     latency_ms = round((time.perf_counter() - t0) * 1000, 2)
+    _metrics["latencies"].append(latency_ms)
+    if len(_metrics["latencies"]) > 500:
+        _metrics["latencies"] = _metrics["latencies"][-500:]
     await record_access(movie_id)
     return JSONResponse({**doc, "_source": "mongodb", "_latency_ms": latency_ms})
 
@@ -271,6 +280,11 @@ async def get_metrics_api():
         avg_latency = sum(_metrics["latencies"][-100:]) / \
             min(len(_metrics["latencies"]), 100)
 
+    requests_last_min = 0
+    now = time.time()
+    if _metrics["last_request_ts"] and (now - _metrics["last_request_ts"]) <= 60:
+        requests_last_min = _metrics["total_requests"]
+
     return {
         "hits": hits,
         "misses": misses,
@@ -279,7 +293,27 @@ async def get_metrics_api():
         "top10_movies": top10,
         "redis_memory_mb": round(info["used_memory"] / 1024 / 1024, 2),
         "redis_peak_memory_mb": round(info["used_memory_peak"] / 1024 / 1024, 2),
-        "avg_latency": avg_latency
+        "avg_latency": avg_latency,
+        "app_total_requests": _metrics["total_requests"],
+        "requests_last_min": requests_last_min
+    }
+
+
+@app.get("/api/dataset-status")
+async def dataset_status_api():
+    """Return MongoDB dataset loading status for dashboard visibility."""
+    movies_count = await _db["movies"].count_documents({})
+    ratings_count = await _db["ratings"].count_documents({})
+    tags_count = await _db["tags"].count_documents({})
+
+    loaded = movies_count > 0 and ratings_count > 0
+
+    return {
+        "loaded": loaded,
+        "movies": movies_count,
+        "ratings": ratings_count,
+        "tags": tags_count,
+        "database": "movielens"
     }
 
 
@@ -359,11 +393,18 @@ async def execute_redis_command(request: Request):
     args = parts[1:]
 
     try:
+        withscores = any(a.upper() == "WITHSCORES" for a in args)
+
         # Execute command
         if cmd == "GET" and len(args) == 1:
             result = await _redis.get(args[0])
-        elif cmd == "SET" and len(args) == 2:
-            result = await _redis.set(args[0], args[1])
+        elif cmd == "SET" and len(args) >= 2:
+            key = args[0]
+            value = args[1]
+            ex = None
+            if len(args) >= 4 and args[2].upper() == "EX":
+                ex = int(args[3])
+            result = await _redis.set(key, value, ex=ex)
         elif cmd == "KEYS" and len(args) >= 1:
             result = await _redis.keys(args[0])
         elif cmd == "DEL" and len(args) >= 1:
@@ -373,9 +414,9 @@ async def execute_redis_command(request: Request):
         elif cmd == "DECR" and len(args) == 1:
             result = await _redis.decr(args[0])
         elif cmd == "ZRANGE" and len(args) >= 3:
-            result = await _redis.zrange(args[0], int(args[1]), int(args[2]), withscores=True)
+            result = await _redis.zrange(args[0], int(args[1]), int(args[2]), withscores=withscores)
         elif cmd == "ZREVRANGE" and len(args) >= 3:
-            result = await _redis.zrevrange(args[0], int(args[1]), int(args[2]), withscores=True)
+            result = await _redis.zrevrange(args[0], int(args[1]), int(args[2]), withscores=withscores)
         elif cmd == "HGETALL" and len(args) == 1:
             result = await _redis.hgetall(args[0])
         elif cmd == "HGET" and len(args) == 2:
@@ -384,6 +425,8 @@ async def execute_redis_command(request: Request):
             result = list(await _redis.smembers(args[0]))
         elif cmd == "LRANGE" and len(args) == 3:
             result = await _redis.lrange(args[0], int(args[1]), int(args[2]))
+        elif cmd == "EXISTS" and len(args) >= 1:
+            result = await _redis.exists(*args)
         elif cmd == "TTL" and len(args) == 1:
             result = await _redis.ttl(args[0])
         elif cmd == "EXPIRE" and len(args) == 2:
@@ -393,7 +436,8 @@ async def execute_redis_command(request: Request):
         elif cmd == "DBSIZE":
             result = await _redis.dbsize()
         elif cmd == "INFO":
-            info = await _redis.info()
+            section = args[0] if args else None
+            info = await _redis.info(section=section)
             result = json.dumps(info, indent=2, default=str)
         else:
             return {"error": f"Command '{cmd}' not supported in this tutorial"}
