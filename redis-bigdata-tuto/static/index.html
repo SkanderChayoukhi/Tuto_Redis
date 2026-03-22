@@ -10,7 +10,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
-    <link rel="stylesheet" href="/static/css/dashboard.css?v=20260320-1">
+    <link rel="stylesheet" href="/static/css/dashboard.css?v=20260322-automation-1">
 </head>
 <body>
     <div class="page-wrapper">
@@ -18,7 +18,7 @@
         <nav class="navbar navbar-dark bg-gradient sticky-top shadow-sm">
             <div class="container-fluid">
                 <a class="navbar-brand fw-bold" href="/">
-                    <i class="fas fa-database"></i> Redis Inspector Pro
+                    <i class="fas fa-database"></i> Redis Inspector 
                 </a>
                 <div class="d-flex align-items-center gap-3">
                     <div class="status-indicator">
@@ -53,6 +53,11 @@
                 <li class="nav-item" role="presentation">
                     <button class="nav-link" id="benchmark-tab" data-bs-toggle="tab" data-bs-target="#benchmark-panel" type="button" role="tab">
                         <i class="fas fa-bolt"></i> Performance
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="automation-tab" data-bs-toggle="tab" data-bs-target="#automation-panel" type="button" role="tab">
+                        <i class="fas fa-rocket"></i> Automation
                     </button>
                 </li>
             </ul>
@@ -348,6 +353,116 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- AUTOMATION TAB -->
+                <div class="tab-pane fade" id="automation-panel" role="tabpanel">
+                    <div class="row g-4 mb-4">
+                        <div class="col-lg-4">
+                            <div class="card automation-card h-100">
+                                <div class="card-header d-flex justify-content-between align-items-center">
+                                    <h6 class="mb-0"><i class="fas fa-download"></i> Dataset Ingestion</h6>
+                                    <span class="badge bg-secondary" id="scriptStatus-ingest">Idle</span>
+                                </div>
+                                <div class="card-body d-flex flex-column gap-3">
+                                    <p class="text-muted mb-0">Run the full MovieLens loading pipeline directly from the UI.</p>
+                                    <div class="script-meta" id="scriptMeta-ingest">Never launched from dashboard.</div>
+                                    <button class="btn btn-primary mt-auto script-run-btn" data-script="ingest">
+                                        <i class="fas fa-play"></i> Run ingestion
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-4">
+                            <div class="card automation-card h-100">
+                                <div class="card-header d-flex justify-content-between align-items-center">
+                                    <h6 class="mb-0"><i class="fas fa-stopwatch"></i> Benchmark Script</h6>
+                                    <span class="badge bg-secondary" id="scriptStatus-benchmark">Idle</span>
+                                </div>
+                                <div class="card-body d-flex flex-column gap-3">
+                                    <p class="text-muted mb-0">Launch the richer CLI benchmark and capture its logs in the browser.</p>
+                                    <div class="script-meta" id="scriptMeta-benchmark">Never launched from dashboard.</div>
+                                    <button class="btn btn-primary mt-auto script-run-btn" data-script="benchmark">
+                                        <i class="fas fa-play"></i> Run benchmark.py
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-4">
+                            <div class="card automation-card h-100">
+                                <div class="card-header d-flex justify-content-between align-items-center">
+                                    <h6 class="mb-0"><i class="fas fa-image"></i> Visualization Report</h6>
+                                    <span class="badge bg-secondary" id="scriptStatus-visualize">Idle</span>
+                                </div>
+                                <div class="card-body d-flex flex-column gap-3">
+                                    <p class="text-muted mb-0">Generate the matplotlib PNG report and preview it below.</p>
+                                    <div class="script-meta" id="scriptMeta-visualize">No generated image yet.</div>
+                                    <button class="btn btn-primary mt-auto script-run-btn" data-script="visualize">
+                                        <i class="fas fa-play"></i> Run visualize.py
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row g-4 mb-4">
+                        <div class="col-lg-4">
+                            <div class="card h-100">
+                                <div class="card-header d-flex justify-content-between align-items-center">
+                                    <h6 class="mb-0"><i class="fas fa-gears"></i> Active Job</h6>
+                                    <button class="btn btn-outline-danger btn-sm" id="cancelScriptBtn" disabled>
+                                        <i class="fas fa-stop"></i> Cancel
+                                    </button>
+                                </div>
+                                <div class="card-body" id="activeScriptJob">
+                                    <p class="text-muted text-center mb-0">No automation job running.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-8">
+                            <div class="card h-100">
+                                <div class="card-header">
+                                    <h6 class="mb-0"><i class="fas fa-scroll"></i> Automation Log</h6>
+                                </div>
+                                <div class="card-body bg-dark command-terminal">
+                                    <div id="scriptLogOutput" class="terminal-output mb-0">
+                                        <div class="output-line">No script output yet.</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row g-4">
+                        <div class="col-lg-4">
+                            <div class="card h-100">
+                                <div class="card-header">
+                                    <h6 class="mb-0"><i class="fas fa-clock-rotate-left"></i> Recent Jobs</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div id="recentJobsList" class="recent-jobs-list">
+                                        <p class="text-muted text-center mb-0">No jobs yet.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-8">
+                            <div class="card h-100">
+                                <div class="card-header d-flex justify-content-between align-items-center">
+                                    <h6 class="mb-0"><i class="fas fa-file-image"></i> Latest Visualization</h6>
+                                    <a class="btn btn-outline-primary btn-sm d-none" id="openVisualizationBtn" href="#" target="_blank" rel="noopener noreferrer">
+                                        <i class="fas fa-arrow-up-right-from-square"></i> Open image
+                                    </a>
+                                </div>
+                                <div class="card-body">
+                                    <div id="visualizationEmptyState" class="text-muted text-center py-5">
+                                        Generate the visualization script to preview the PNG here.
+                                    </div>
+                                    <img id="visualizationPreview" class="img-fluid rounded shadow-sm d-none" alt="Redis dashboard visualization preview">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -370,6 +485,7 @@
                         <li><strong>Command Executor</strong> - Run Redis commands directly</li>
                         <li><strong>Data Inspector</strong> - View what's stored in Redis</li>
                         <li><strong>Performance</strong> - Compare cache efficiency</li>
+                        <li><strong>Automation</strong> - Launch ingestion, benchmark, and visualization scripts</li>
                     </ul>
 
                     <h6 class="mt-3">Why Redis?</h6>
@@ -389,6 +505,6 @@
 
     <!-- SCRIPTS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
-    <script src="/static/js/dashboard.js?v=20260320-1"></script>
+    <script src="/static/js/dashboard.js?v=20260322-automation-1"></script>
 </body>
 </html>

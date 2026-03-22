@@ -167,9 +167,10 @@ http://localhost:8000
 - 💻 **Redis Command Executor**: Type Redis commands in the browser
 - 🔍 **Data Inspector**: Browse all keys and their values
 - ⚡ **Performance Lab**: Compare cold vs warm cache speeds
+- 🚀 **Automation Lab**: Launch `ingest.py`, `benchmark.py`, and `visualize.py` from the UI
 - 📈 **Live Charts**: Visualize latency trends and leaderboards
 
-**No need for terminal commands anymore!** Everything is clickable and visual.
+**Most of the demo workflow is now available directly in the UI.** The terminal remains useful for troubleshooting and low-level checks.
 
 ---
 

@@ -9,12 +9,16 @@ Dashboard :
   Browser → /dashboard → Redis Inspector Pro (real-time metrics, command executor)
 """
 
+import asyncio
 import json
 import time
 import os
 import logging
 import re
+import sys
+import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, FileResponse
@@ -30,10 +34,17 @@ REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/movielens")
 CACHE_TTL = int(os.getenv("CACHE_TTL", 60))         # secondes
 RATE_LIMIT = int(os.getenv("RATE_LIMIT", 100))       # req / minute / IP
+PROJECT_DIR = Path(__file__).resolve().parent.parent
+STATIC_DIR = PROJECT_DIR / "static"
+DASHBOARD_DIR = PROJECT_DIR / "dashboard"
+MAX_SCRIPT_LOG_LINES = 400
 
 _redis: aioredis.Redis = None
 _mongo_client = None
 _db = None
+_script_jobs = {}
+_latest_script_jobs = {}
+_active_script_job_id = None
 
 # Metrics tracking
 _metrics = {
@@ -44,6 +55,118 @@ _metrics = {
     "total_requests": 0,
     "last_request_ts": 0.0
 }
+
+SCRIPT_DEFS = {
+    "ingest": {
+        "label": "Dataset Ingestion",
+        "description": "Download MovieLens, reload MongoDB, and warm the dashboard metrics.",
+        "script_path": PROJECT_DIR / "src" / "ingest.py",
+        "artifact_path": None,
+        "env": {}
+    },
+    "benchmark": {
+        "label": "Benchmark Script",
+        "description": "Run the rich benchmark comparing cold-cache and warm-cache latency.",
+        "script_path": PROJECT_DIR / "src" / "benchmark.py",
+        "artifact_path": None,
+        "env": {}
+    },
+    "visualize": {
+        "label": "Visualization Report",
+        "description": "Generate the matplotlib report image used for your oral demo.",
+        "script_path": PROJECT_DIR / "dashboard" / "visualize.py",
+        "artifact_path": PROJECT_DIR / "dashboard" / "redis_dashboard.png",
+        "env": {"MPLBACKEND": "Agg"}
+    }
+}
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _serialize_job(job: dict) -> dict:
+    script_name = job["script"]
+    script_def = SCRIPT_DEFS[script_name]
+    artifact_url = None
+    artifact_path = script_def.get("artifact_path")
+
+    if artifact_path and artifact_path.exists() and job.get("status") == "completed":
+        artifact_url = f"/api/scripts/artifacts/{script_name}?t={int(artifact_path.stat().st_mtime)}"
+
+    return {
+        "id": job["id"],
+        "script": script_name,
+        "label": script_def["label"],
+        "description": script_def["description"],
+        "status": job["status"],
+        "started_at": job["started_at"],
+        "finished_at": job.get("finished_at"),
+        "returncode": job.get("returncode"),
+        "logs": job.get("logs", []),
+        "command": job["command"],
+        "artifact_url": artifact_url,
+        "error": job.get("error")
+    }
+
+
+async def _run_script_job(job_id: str):
+    global _active_script_job_id
+
+    job = _script_jobs[job_id]
+    script_def = SCRIPT_DEFS[job["script"]]
+    env = os.environ.copy()
+    env.update(script_def.get("env", {}))
+
+    try:
+        process = await asyncio.create_subprocess_exec(
+            sys.executable,
+            str(script_def["script_path"]),
+            cwd=str(PROJECT_DIR),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            env=env,
+        )
+        job["process"] = process
+        job["pid"] = process.pid
+
+        while True:
+            line = await process.stdout.readline()
+            if not line:
+                break
+
+            decoded = line.decode("utf-8", errors="replace").rstrip()
+            if not decoded:
+                continue
+
+            job["logs"].append(decoded)
+            if len(job["logs"]) > MAX_SCRIPT_LOG_LINES:
+                job["logs"] = job["logs"][-MAX_SCRIPT_LOG_LINES:]
+
+        returncode = await process.wait()
+        job["returncode"] = returncode
+        job["finished_at"] = _utc_now_iso()
+
+        if job["status"] != "cancelled":
+            job["status"] = "completed" if returncode == 0 else "failed"
+            if returncode != 0 and not job.get("error"):
+                job["error"] = f"Script exited with code {returncode}"
+    except Exception as exc:
+        job["status"] = "failed"
+        job["finished_at"] = _utc_now_iso()
+        job["returncode"] = -1
+        job["error"] = str(exc)
+        job["logs"].append(f"[runner] {exc}")
+    finally:
+        job.pop("process", None)
+        if _active_script_job_id == job_id:
+            _active_script_job_id = None
+
+
+def _get_active_job() -> dict | None:
+    if not _active_script_job_id:
+        return None
+    return _script_jobs.get(_active_script_job_id)
 
 
 @asynccontextmanager
@@ -64,12 +187,11 @@ app = FastAPI(title="Redis Inspector Pro",
               description="Interactive Redis tutorial", lifespan=lifespan)
 
 # Mount static files
-static_dir = Path(__file__).parent.parent / "static"
-if static_dir.exists():
-    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
-    log.info(f"✓ Static files mounted: {static_dir}")
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+    log.info(f"✓ Static files mounted: {STATIC_DIR}")
 else:
-    log.warning(f"⚠ Static directory not found at {static_dir}")
+    log.warning(f"⚠ Static directory not found at {STATIC_DIR}")
 
 
 # ──────────────────────────────────────────────
@@ -253,8 +375,7 @@ async def leaderboard(top: int = 20):
 @app.get("/")
 async def dashboard_root():
     """Serve dashboard at root path"""
-    static_dir = Path(__file__).parent.parent / "static" / "index.html"
-    return FileResponse(str(static_dir))
+    return FileResponse(str(STATIC_DIR / "index.html"))
 
 
 @app.get("/api/metrics")
@@ -446,3 +567,136 @@ async def execute_redis_command(request: Request):
 
     except Exception as e:
         return {"error": str(e), "result": None}
+
+
+@app.get("/api/scripts")
+async def get_scripts_catalog():
+    """Expose available automation scripts and current job state to the UI."""
+    active_job = _get_active_job()
+    scripts = []
+
+    for name, script_def in SCRIPT_DEFS.items():
+        latest_job_id = _latest_script_jobs.get(name)
+        latest_job = _script_jobs.get(latest_job_id) if latest_job_id else None
+        artifact_path = script_def.get("artifact_path")
+
+        scripts.append({
+            "name": name,
+            "label": script_def["label"],
+            "description": script_def["description"],
+            "is_running": bool(active_job and active_job["script"] == name and active_job["status"] == "running"),
+            "latest_job": _serialize_job(latest_job) if latest_job else None,
+            "artifact_available": bool(artifact_path and artifact_path.exists())
+        })
+
+    recent_jobs = [
+        _serialize_job(job)
+        for job in sorted(_script_jobs.values(), key=lambda item: item["started_at"], reverse=True)[:10]
+    ]
+
+    return {
+        "busy": bool(active_job and active_job["status"] == "running"),
+        "active_job": _serialize_job(active_job) if active_job else None,
+        "scripts": scripts,
+        "recent_jobs": recent_jobs
+    }
+
+
+@app.post("/api/scripts/{script_name}/run")
+async def run_automation_script(script_name: str):
+    """Launch a project script as a background job."""
+    global _active_script_job_id
+
+    script_def = SCRIPT_DEFS.get(script_name)
+    if not script_def:
+        raise HTTPException(status_code=404, detail="Unknown script")
+
+    if not script_def["script_path"].exists():
+        raise HTTPException(
+            status_code=500, detail=f"Script not found: {script_def['script_path']}")
+
+    active_job = _get_active_job()
+    if active_job and active_job["status"] == "running":
+        return JSONResponse(
+            status_code=409,
+            content={
+                "error": "Another automation script is already running",
+                "active_job": _serialize_job(active_job)
+            }
+        )
+
+    job_id = uuid.uuid4().hex[:12]
+    job = {
+        "id": job_id,
+        "script": script_name,
+        "status": "running",
+        "started_at": _utc_now_iso(),
+        "finished_at": None,
+        "returncode": None,
+        "logs": [f"[runner] Launching {script_def['label']}"],
+        "command": [sys.executable, str(script_def["script_path"])],
+        "error": None,
+    }
+    _script_jobs[job_id] = job
+    _latest_script_jobs[script_name] = job_id
+    _active_script_job_id = job_id
+
+    asyncio.create_task(_run_script_job(job_id))
+    return {"job": _serialize_job(job)}
+
+
+@app.get("/api/scripts/jobs/{job_id}")
+async def get_script_job(job_id: str):
+    """Return detailed job status and log output."""
+    job = _script_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {"job": _serialize_job(job)}
+
+
+@app.post("/api/scripts/jobs/{job_id}/cancel")
+async def cancel_script_job(job_id: str):
+    """Terminate a running automation job."""
+    global _active_script_job_id
+
+    job = _script_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    process = job.get("process")
+    if job["status"] != "running" or process is None:
+        return {"job": _serialize_job(job)}
+
+    process.terminate()
+    try:
+        await asyncio.wait_for(process.wait(), timeout=5)
+    except asyncio.TimeoutError:
+        process.kill()
+        await process.wait()
+
+    job["status"] = "cancelled"
+    job["finished_at"] = _utc_now_iso()
+    job["returncode"] = -15
+    job["error"] = "Cancelled from dashboard"
+    job["logs"].append("[runner] Job cancelled from dashboard")
+    job.pop("process", None)
+
+    if _active_script_job_id == job_id:
+        _active_script_job_id = None
+
+    return {"job": _serialize_job(job)}
+
+
+@app.get("/api/scripts/artifacts/{script_name}")
+async def get_script_artifact(script_name: str):
+    """Serve generated script artifacts such as the visualization PNG."""
+    script_def = SCRIPT_DEFS.get(script_name)
+    if not script_def:
+        raise HTTPException(status_code=404, detail="Unknown artifact")
+
+    artifact_path = script_def.get("artifact_path")
+    if not artifact_path or not artifact_path.exists():
+        raise HTTPException(status_code=404, detail="Artifact not found")
+
+    media_type = "image/png" if artifact_path.suffix == ".png" else None
+    return FileResponse(str(artifact_path), media_type=media_type)

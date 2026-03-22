@@ -18,6 +18,12 @@ const state = {
         coldMs: 0,
         warmMs: 0
     },
+    automation: {
+        busy: false,
+        activeJob: null,
+        recentJobs: [],
+        scripts: []
+    },
     lastSample: {
         ts: Date.now(),
         total: 0
@@ -40,6 +46,7 @@ document.addEventListener('DOMContentLoaded', function() {
     setupEventListeners();
     startMetricsPolling();
     startDatasetPolling();
+    startAutomationPolling();
     loadKeysInspector();
 });
 
@@ -170,6 +177,10 @@ function setupEventListeners() {
     });
     document.getElementById('flushCacheBtn').addEventListener('click', flushCache);
     document.getElementById('warmCacheBtn').addEventListener('click', warmCache);
+    document.querySelectorAll('.script-run-btn').forEach(button => {
+        button.addEventListener('click', () => runAutomationScript(button.dataset.script));
+    });
+    document.getElementById('cancelScriptBtn').addEventListener('click', cancelActiveScript);
 }
 
 // ===== COMMAND EXECUTOR =====
@@ -472,6 +483,226 @@ function addBenchmarkResult(label, value) {
     result.className = 'benchmark-result';
     result.innerHTML = `<div class="label">${label}</div><div class="value">${value}</div>`;
     results.insertBefore(result, results.firstChild);
+}
+
+// ===== AUTOMATION =====
+function startAutomationPolling() {
+    const refresh = () => {
+        fetch('/api/scripts')
+            .then(res => res.json())
+            .then(data => updateAutomationState(data))
+            .catch(err => console.error('Automation error:', err));
+    };
+
+    refresh();
+    setInterval(refresh, 2000);
+}
+
+function updateAutomationState(data) {
+    state.automation.busy = Boolean(data.busy);
+    state.automation.activeJob = data.active_job || null;
+    state.automation.recentJobs = data.recent_jobs || [];
+    state.automation.scripts = data.scripts || [];
+
+    renderAutomationCards();
+    renderActiveScriptJob();
+    renderScriptLogs();
+    renderRecentJobs();
+    updateVisualizationPreview();
+}
+
+function renderAutomationCards() {
+    state.automation.scripts.forEach(script => {
+        const badge = document.getElementById(`scriptStatus-${script.name}`);
+        const meta = document.getElementById(`scriptMeta-${script.name}`);
+        const button = document.querySelector(`.script-run-btn[data-script="${script.name}"]`);
+
+        if (!badge || !meta || !button) {
+            return;
+        }
+
+        const latestJob = script.latest_job;
+        const status = script.is_running
+            ? 'Running'
+            : (latestJob ? latestJob.status : 'Idle');
+
+        badge.className = `badge ${statusBadgeClass(status)}`;
+        badge.textContent = statusLabel(status);
+
+        if (latestJob) {
+            const timing = latestJob.finished_at
+                ? `Finished ${formatRelativeTime(latestJob.finished_at)}`
+                : `Started ${formatRelativeTime(latestJob.started_at)}`;
+            meta.textContent = `${timing} • ${latestJob.logs.length} log lines`;
+        } else if (script.name === 'visualize' && script.artifact_available) {
+            meta.textContent = 'Visualization artifact detected and ready to preview.';
+        } else {
+            meta.textContent = 'Never launched from dashboard.';
+        }
+
+        button.disabled = state.automation.busy;
+    });
+}
+
+function renderActiveScriptJob() {
+    const container = document.getElementById('activeScriptJob');
+    const cancelBtn = document.getElementById('cancelScriptBtn');
+    const job = state.automation.activeJob;
+
+    if (!job) {
+        container.innerHTML = '<p class="text-muted text-center mb-0">No automation job running.</p>';
+        cancelBtn.disabled = true;
+        return;
+    }
+
+    cancelBtn.disabled = job.status !== 'running';
+    container.innerHTML = `
+        <div class="job-summary">
+            <div class="job-label">${job.label}</div>
+            <div><span class="badge ${statusBadgeClass(job.status)}">${statusLabel(job.status)}</span></div>
+            <div class="job-meta">Started: ${formatDateTime(job.started_at)}</div>
+            <div class="job-meta">Command: ${job.command.join(' ')}</div>
+            ${job.finished_at ? `<div class="job-meta">Finished: ${formatDateTime(job.finished_at)}</div>` : ''}
+            ${job.error ? `<div class="text-danger small">${job.error}</div>` : ''}
+        </div>
+    `;
+}
+
+function renderScriptLogs() {
+    const output = document.getElementById('scriptLogOutput');
+    const activeJob = state.automation.activeJob;
+    const sourceJob = activeJob || state.automation.recentJobs[0];
+
+    if (!sourceJob || !sourceJob.logs || sourceJob.logs.length === 0) {
+        output.innerHTML = '<div class="output-line">No script output yet.</div>';
+        return;
+    }
+
+    output.innerHTML = sourceJob.logs
+        .map(line => `<div class="output-line">${escapeHtml(line)}</div>`)
+        .join('');
+    output.scrollTop = output.scrollHeight;
+}
+
+function renderRecentJobs() {
+    const list = document.getElementById('recentJobsList');
+    const jobs = state.automation.recentJobs;
+
+    if (!jobs || jobs.length === 0) {
+        list.innerHTML = '<p class="text-muted text-center mb-0">No jobs yet.</p>';
+        return;
+    }
+
+    list.innerHTML = jobs.map(job => `
+        <div class="recent-job-item">
+            <div class="d-flex justify-content-between align-items-center gap-2">
+                <div class="title">${job.label}</div>
+                <span class="badge ${statusBadgeClass(job.status)}">${statusLabel(job.status)}</span>
+            </div>
+            <div class="meta mt-2">Started: ${formatDateTime(job.started_at)}</div>
+            ${job.finished_at ? `<div class="meta">Finished: ${formatDateTime(job.finished_at)}</div>` : ''}
+            ${job.returncode !== null && job.returncode !== undefined ? `<div class="meta">Exit code: ${job.returncode}</div>` : ''}
+        </div>
+    `).join('');
+}
+
+function updateVisualizationPreview() {
+    const preview = document.getElementById('visualizationPreview');
+    const emptyState = document.getElementById('visualizationEmptyState');
+    const openBtn = document.getElementById('openVisualizationBtn');
+    const visualizationScript = state.automation.scripts.find(script => script.name === 'visualize');
+    const artifactUrl = visualizationScript?.latest_job?.artifact_url || state.automation.recentJobs.find(job => job.script === 'visualize' && job.artifact_url)?.artifact_url;
+
+    if (!artifactUrl) {
+        preview.classList.add('d-none');
+        emptyState.classList.remove('d-none');
+        openBtn.classList.add('d-none');
+        openBtn.href = '#';
+        return;
+    }
+
+    preview.src = artifactUrl;
+    preview.classList.remove('d-none');
+    emptyState.classList.add('d-none');
+    openBtn.href = artifactUrl;
+    openBtn.classList.remove('d-none');
+}
+
+function runAutomationScript(scriptName) {
+    fetch(`/api/scripts/${scriptName}/run`, { method: 'POST' })
+        .then(async res => {
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.error || data.detail || 'Unable to start script');
+            }
+            return data;
+        })
+        .then(data => {
+            state.automation.activeJob = data.job;
+            renderActiveScriptJob();
+            renderScriptLogs();
+        })
+        .catch(err => {
+            const output = document.getElementById('scriptLogOutput');
+            output.innerHTML = `<div class="error-line">${escapeHtml(err.message)}</div>`;
+        });
+}
+
+function cancelActiveScript() {
+    const job = state.automation.activeJob;
+    if (!job) {
+        return;
+    }
+
+    fetch(`/api/scripts/jobs/${job.id}/cancel`, { method: 'POST' })
+        .then(res => res.json())
+        .then(data => {
+            state.automation.activeJob = data.job;
+            renderActiveScriptJob();
+            renderScriptLogs();
+        })
+        .catch(err => console.error('Cancel script error:', err));
+}
+
+function statusBadgeClass(status) {
+    const normalized = String(status).toLowerCase();
+    if (normalized === 'running') return 'bg-primary';
+    if (normalized === 'completed') return 'bg-success';
+    if (normalized === 'failed') return 'bg-danger';
+    if (normalized === 'cancelled') return 'bg-warning text-dark';
+    return 'bg-secondary';
+}
+
+function statusLabel(status) {
+    const normalized = String(status).toLowerCase();
+    if (normalized === 'running') return 'Running';
+    if (normalized === 'completed') return 'Completed';
+    if (normalized === 'failed') return 'Failed';
+    if (normalized === 'cancelled') return 'Cancelled';
+    return 'Idle';
+}
+
+function formatDateTime(value) {
+    if (!value) return '—';
+    return new Date(value).toLocaleString();
+}
+
+function formatRelativeTime(value) {
+    if (!value) return 'just now';
+    const diffMs = Date.now() - new Date(value).getTime();
+    const diffSec = Math.max(Math.floor(diffMs / 1000), 0);
+    if (diffSec < 60) return `${diffSec}s ago`;
+    if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+    return `${Math.floor(diffSec / 3600)}h ago`;
+}
+
+function escapeHtml(value) {
+    return String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
 }
 
 // ===== UTILITIES =====

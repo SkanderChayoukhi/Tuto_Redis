@@ -46,6 +46,7 @@ services:
     volumes:
       - ./src:/app/src
       - ./static:/app/static
+      - ./dashboard:/app/dashboard
       - ./data:/app/data
 
 volumes:

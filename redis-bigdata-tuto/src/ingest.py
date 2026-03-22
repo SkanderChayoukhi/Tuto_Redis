@@ -45,6 +45,8 @@ except ModuleNotFoundError as exc:
 
 console = Console()
 ML_URL = "https://files.grouplens.org/datasets/movielens/ml-latest-small.zip"
+DATA_DIR = ROOT_DIR / "data"
+DATASET_ARCHIVE = DATA_DIR / "ml-latest-small.zip"
 
 
 def _resolve_mongo_uri() -> str:
@@ -65,10 +67,41 @@ def _resolve_mongo_uri() -> str:
 
 
 def download_movielens() -> dict[str, pd.DataFrame]:
-    console.print("[cyan]Téléchargement du dataset MovieLens Small...[/cyan]")
-    r = requests.get(ML_URL, timeout=60)
-    r.raise_for_status()
-    with zipfile.ZipFile(io.BytesIO(r.content)) as z:
+    archive_bytes = None
+
+    if DATASET_ARCHIVE.exists():
+        console.print(
+            f"[cyan]Archive locale détectée : {DATASET_ARCHIVE}[/cyan]")
+        archive_bytes = DATASET_ARCHIVE.read_bytes()
+    else:
+        console.print(
+            "[cyan]Téléchargement du dataset MovieLens Small...[/cyan]")
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+        last_error = None
+        for attempt in range(1, 4):
+            try:
+                console.print(
+                    f"[cyan]Tentative {attempt}/3 depuis {ML_URL}[/cyan]")
+                response = requests.get(ML_URL, timeout=(10, 180))
+                response.raise_for_status()
+                archive_bytes = response.content
+                DATASET_ARCHIVE.write_bytes(archive_bytes)
+                console.print(
+                    f"[green]✓ Archive sauvegardée dans {DATASET_ARCHIVE}[/green]")
+                break
+            except Exception as exc:
+                last_error = exc
+                console.print(
+                    f"[yellow]! Échec du téléchargement: {exc}[/yellow]")
+
+        if archive_bytes is None:
+            raise RuntimeError(
+                "Impossible de télécharger MovieLens après 3 tentatives. "
+                f"Dernière erreur: {last_error}"
+            ) from last_error
+
+    with zipfile.ZipFile(io.BytesIO(archive_bytes)) as z:
         with z.open("ml-latest-small/movies.csv") as f:
             movies = pd.read_csv(f)
         with z.open("ml-latest-small/ratings.csv") as f:
