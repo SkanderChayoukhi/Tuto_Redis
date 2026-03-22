@@ -29,7 +29,7 @@ Une API de recommandation de films reçoit des milliers de requêtes par seconde
 
 ## Architecture
 
-```
+````
 Client (Python / curl)
         │
         ▼
@@ -45,299 +45,206 @@ Client (Python / curl)
 │ Cache │ │ Source  │
 │ (RAM) │ │ (disk)  │
 └───────┘ └─────────┘
-    ▲         │
-    └─────────┘
-    populate cache
-```
+   # Redis Inspector Pro - Tutoriel NoSQL Redis (Big Data)
 
-**Flux de données :**
+   Tutoriel conteneurise pour la presentation orale du mardi 24/03 apres-midi.
 
-1. Requête entrante → vérification rate limit (Redis INCR)
-2. Lecture clé `movie:{id}` dans Redis → **cache hit** → réponse < 2ms
-3. Si absent → requête MongoDB → calcul avg_rating → **populate Redis** → réponse ~50ms
-4. Chaque accès → `ZINCRBY leaderboard:movies` pour le classement temps réel
+   Objectif du projet: montrer, de maniere concrete et demo-ready, comment Redis resout le probleme de velocite dans un systeme Big Data grace au cache en memoire.
 
----
+   ## 1. Contexte et objectif pedagogique
 
-## Stack technique
+   Ce tutoriel couvre les rendus demandes:
 
-| Service            | Version  | Rôle                                       |
-| ------------------ | -------- | ------------------------------------------ |
-| **Redis**          | 7-alpine | Cache key-value, rate limiter, leaderboard |
-| **MongoDB**        | 7        | Source de données principale               |
-| **FastAPI**        | 0.111    | API REST asynchrone                        |
-| **Python**         | 3.11     | Scripts de benchmark et ingestion          |
-| **Docker Compose** | v2       | Orchestration locale                       |
+   1. Tutoriel conteneurise: Docker Compose lance Redis, MongoDB et FastAPI.
+   2. Repo GitHub avec README complet: ce fichier est le document principal de reference.
+   3. Dataset en ligne: MovieLens Small, telecharge automatiquement.
+   4. Visualisation des donnees: dashboard web interactif + script de visualisation matplotlib.
 
----
+   Cas d usage choisi: API movies avec cache Redis devant MongoDB.
 
-## Démarrage rapide
+   Lecture Big Data associee:
 
-### Prérequis
+   1. Vitesse de reponse: cache hit en quelques ms.
+   2. Scalabilite: reduction de charge sur la base source.
+   3. Tradeoff coherence/fraicheur: TTL + cache-aside.
 
-- Docker Desktop (ou Docker Engine + Docker Compose v2)
-- Python 3.10+ (pour les scripts hors-container)
+   ## 2. Architecture
 
-### 1. Cloner le repo
+   Flux principal:
+
+   1. Le client appelle GET /movies/{movie_id}.
+   2. FastAPI interroge Redis (cle movie:{id}).
+   3. Si hit: reponse immediate.
+   4. Si miss: lecture MongoDB, enrichissement, ecriture Redis avec TTL, reponse.
+   5. Chaque appel alimente des stats Redis et un leaderboard (Sorted Set).
+
+   Services Docker:
+
+   1. redis (cache + stats + rate-limit + leaderboard)
+   2. mongo (source de verite)
+   3. api (FastAPI + UI + scripts automatises)
+
+   ## 3. Dataset et modelisation
+
+   Dataset en ligne utilise:
+
+   1. Source: GroupLens MovieLens Small
+   2. Taille: environ 1 Mo
+   3. Contenu: movies, ratings, tags
+
+   Collections MongoDB:
+
+   1. movies
+   2. ratings
+   3. tags
+
+   Cles Redis principales:
+
+   1. movie:{id}: cache film enrichi
+   2. search:genre:*: cache des recherches
+   3. leaderboard:movies: classement des films les plus consultes
+   4. stats:hits et stats:misses: compteurs de performance
+   5. rate:{ip}: compteur rate limiting
+
+   ## 4. Installation a partager a la classe
+
+   Prerequis a envoyer avant la seance:
+
+   1. Docker Desktop (ou Docker Engine + compose v2)
+   2. Git
+   3. Port 8000 libre (et 6379, 27017)
+
+   Commandes d installation:
+
+   ```bash
+   git clone https://github.com/SkanderChayoukhi/Tuto_Redis.git
+   cd Tuto_Redis/redis-bigdata-tuto
+   docker compose up --build
+````
+
+Chargement du dataset (recommande):
 
 ```bash
-git clone https://github.com/[votre-username]/redis-bigdata-tuto.git
-cd redis-bigdata-tuto
-```
-
-### 2. Démarrer les services
-
-```bash
-docker-compose up --build
-```
-
-Les trois services démarrent :
-
-- FastAPI → http://localhost:8000
-- Redis → localhost:6379
-- MongoDB → localhost:27017
-
-### 3. Charger le dataset MovieLens
-
-Dans un second terminal :
-
-```bash
-# Recommandé (utilise l'environnement du conteneur API)
 docker compose exec api python src/ingest.py
-
-# Alternative locale (si vous avez un venv Python prêt)
-# pip install -r requirements.txt
-# python src/ingest.py
 ```
 
-Cette étape télécharge automatiquement [MovieLens Small](https://grouplens.org/datasets/movielens/latest/) (~1 Mo) et charge les données dans MongoDB.
+Acces interface:
 
-### 4. Tester l'API
+1.  URL UI: http://localhost:8000
+2.  Healthcheck API: http://localhost:8000/health
+
+## 5. Demonstration rapide (15 minutes)
+
+Plan oral recommande avec participation de tout le groupe:
+
+1.  Intro (2 min): probleme Big Data + role du cache.
+2.  Architecture (2 min): Redis, MongoDB, FastAPI, Docker.
+3.  Live UI (7 min): Dashboard, Command Executor, Data Inspector, Performance, Automation.
+4.  Scripts (2 min): ingestion, benchmark, visualization lances depuis l UI.
+5.  Conclusion (2 min): gains observes, limites et extensions.
+
+Repartition de parole suggeree:
+
+1.  Personne A: contexte et architecture
+2.  Personne B: demo UI et commandes Redis
+3.  Personne C: benchmark, graphs, conclusion
+
+## 6. Ce qui est executable dans le projet
+
+Depuis l UI:
+
+1.  Visualisation metriques en temps reel
+2.  Execution de commandes Redis
+3.  Inspection des cles et valeurs
+4.  Benchmark cold vs warm cache
+5.  Lancement des scripts ingest.py, benchmark.py, visualize.py
+
+Depuis terminal:
 
 ```bash
-# Vérifier que tout fonctionne
-curl http://localhost:8000/health
-
-# Premier appel → cache miss (MongoDB)
-curl http://localhost:8000/movies/1
-
-# Second appel → cache hit (Redis, beaucoup plus rapide)
-curl http://localhost:8000/movies/1
-
-# Voir les stats du cache
-curl http://localhost:8000/stats
-
-# Recherche par genre
-curl "http://localhost:8000/movies?genre=Action&limit=10"
-```
-
-### 5. Lancer le benchmark
-
-```bash
+docker compose exec api python src/ingest.py
 python src/benchmark.py
-```
-
-Résultat attendu (sur machine standard) :
-
-```
-╭──────────────────────────────────────────────────────────────────────╮
-│             Résultats du benchmark                                   │
-├─────────────────┬────────────────────┬───────────────────┬─────────┤
-│ Métrique        │ Cache FROID (MongoDB) │ Cache CHAUD (Redis) │ Speedup │
-├─────────────────┼────────────────────┼───────────────────┼─────────┤
-│ Latence moyenne │ 48.32 ms           │ 1.84 ms           │ 26.3x   │
-│ Médiane (p50)   │ 45.10 ms           │ 1.60 ms           │ 28.2x   │
-│ p95             │ 89.40 ms           │ 3.20 ms           │ 27.9x   │
-│ p99             │ 112.80 ms          │ 4.80 ms           │ 23.5x   │
-└─────────────────┴────────────────────┴───────────────────┴─────────┘
-```
-
-### 6. Access the Interactive Dashboard
-
-**IMPORTANT**: The tutorial now includes a professional interactive dashboard!
-
-```bash
-# The dashboard is automatically available at:
-http://localhost:8000
-```
-
-**Dashboard Features**:
-
-- 📊 **Real-time Metrics**: Cache hit ratio, memory usage, latency
-- 💻 **Redis Command Executor**: Type Redis commands in the browser
-- 🔍 **Data Inspector**: Browse all keys and their values
-- ⚡ **Performance Lab**: Compare cold vs warm cache speeds
-- 🚀 **Automation Lab**: Launch `ingest.py`, `benchmark.py`, and `visualize.py` from the UI
-- 📈 **Live Charts**: Visualize latency trends and leaderboards
-
-**Most of the demo workflow is now available directly in the UI.** The terminal remains useful for troubleshooting and low-level checks.
-
----
-
-## 📚 Complete Documentation
-
-### Main Files to Read
-
-1. **[TUTORIAL.md](./TUTORIAL.md)** - Full Big Data concepts and theory
-   - Why Redis matters for Big Data
-   - Data modeling and caching strategies
-   - CAP theorem and consistency
-   - Real-world case studies
-
-2. **[USER_GUIDE.md](./USER_GUIDE.md)** - Interactive learning exercises
-   - Dashboard walkthrough
-   - Hands-on Redis commands
-   - Learning challenges
-   - Troubleshooting guide
-
-3. **[CREATIVE_IMPROVEMENTS.md](./CREATIVE_IMPROVEMENTS.md)** - Architecture details
-   - System design
-   - API endpoints
-   - Implementation notes
-
----
-
-## 🚀 Quick Start (Dashboard Version)
-
-### 1. Start Everything
-
-```bash
-docker-compose up --build
-```
-
-### 2. Load Data
-
-```bash
-pip install -r requirements.txt
-python src/ingest.py
-```
-
-### 3. Open Dashboard
-
-**Browser**: `http://localhost:8000`
-
-### 4. Try the Redis Command Executor
-
-In the **Command Executor** tab:
-
-```redis
-GET movie:1              # Get a cached movie
-ZREVRANGE leaderboard:movies 0 4  # Top 5 movies
-DBSIZE                   # How many keys cached
-```
-
-### 5. Watch the Metrics Update
-
-Dashboard shows real-time:
-
-- Cache hit/miss ratio
-- Memory usage
-- Request latency
-- Top accessed movies
-
----
-
-### 6. Visualiser le dashboard
-
-```bash
 python dashboard/visualize.py
 ```
 
-Génère `dashboard/redis_dashboard.png` avec 4 graphiques :
+## 7. API utile pour la demo
 
-- Évolution du hit ratio
-- Comparaison latence Redis vs MongoDB
-- Leaderboard (Top 10 films les plus vus)
-- Consommation mémoire Redis
+Endpoints principaux:
 
----
+1.  GET /health
+2.  GET /movies/{movie_id}
+3.  GET /movies?genre=Action&limit=10
+4.  GET /stats
+5.  DELETE /cache
 
-## Structures de données Redis utilisées
+Endpoints UI:
 
-### Strings (cache principal)
+1.  GET /
+2.  GET /api/metrics
+3.  GET /api/dataset-status
+4.  GET /api/keys
+5.  GET /api/key/{key_name}
+6.  POST /api/command
+7.  GET /api/scripts
+8.  POST /api/scripts/{script_name}/run
 
-```
-SET movie:1  '{"movieId":"1","title":"Toy Story","genres":["Animation"],"avg_rating":3.92}'  EX 60
-GET movie:1
-```
+## 8. Concepts NoSQL et metriques a expliquer a l oral
 
-### Counters (stats & rate limiting)
+1.  Hit: donnee trouvee dans Redis.
+2.  Miss: donnee absente de Redis, lecture MongoDB necessaire.
+3.  Hot cache: cache deja rempli, latence faible.
+4.  Cold cache: cache vide, latence plus elevee.
+5.  TTL: duree de vie d une cle en cache.
+6.  p50, p95, p99: percentiles de latence.
 
-```
-INCR stats:hits
-INCR stats:misses
-INCR rate:192.168.1.1        # compteur par IP
-EXPIRE rate:192.168.1.1 60   # fenêtre de 1 minute
-```
+Interpretation simple:
 
-### Sorted Sets (leaderboard)
+1.  p50 = mediane (latence typique)
+2.  p95 = latence des cas lents frequents
+3.  p99 = latence de queue (cas extremes)
 
-```
-ZINCRBY leaderboard:movies 1 "296"    # +1 vue pour le film 296
-ZREVRANGE leaderboard:movies 0 9 WITHSCORES  # Top 10
-```
+## 9. Structure projet
 
----
-
-## Concepts BigData illustrés
-
-### Pourquoi Redis est un outil BigData ?
-
-1. **Vélocité** : Redis opère entièrement en RAM. Latence < 1ms pour les opérations simples.
-2. **Volume** : Redis Cluster permet le sharding horizontal sur N nœuds. Chaque nœud gère une partie du keyspace (hash slots 0-16383).
-3. **Scalabilité horizontale** : La politique `allkeys-lru` (Least Recently Used) permet d'éviter l'OOM sur des volumes importants.
-
-### CAP Theorem et Redis
-
-Redis se positionne comme système **AP** (Available + Partition Tolerant) :
-
-- En mode cluster, Redis préfère rester disponible plutôt que de garantir une cohérence parfaite lors d'une partition réseau.
-- La réplication Redis est **asynchrone** : une panne du master pendant une réplication peut causer une légère perte de données.
-- Pour des cas nécessitant une cohérence forte (CP), Redis propose le mode `WAIT` pour forcer une écriture synchrone sur les répliques.
-
-### TTL et fraîcheur des données
-
-```python
-CACHE_TTL = 60  # secondes
-
-# Stratégies de cache :
-# - Cache-aside (ce projet) : l'application gère le cache manuellement
-# - Write-through : écriture simultanée DB + cache
-# - Write-behind : écriture différée en DB (Redis en tampon)
-```
-
----
-
-## Structure du projet
-
-```
+```text
 redis-bigdata-tuto/
-├── docker-compose.yml    # Orchestration des 3 services
-├── Dockerfile            # Image FastAPI
-├── requirements.txt      # Dépendances Python
-├── src/
-│   ├── main.py           # API FastAPI + logique cache Redis
-│   ├── ingest.py         # Téléchargement et chargement MovieLens → MongoDB
-│   └── benchmark.py      # Mesure de performance cache froid vs chaud
-├── dashboard/
-│   └── visualize.py      # Dashboard matplotlib (4 graphiques)
-└── README.md
+   docker-compose.yml
+   Dockerfile
+   requirements.txt
+   src/
+      main.py
+      ingest.py
+      benchmark.py
+   dashboard/
+      visualize.py
+   static/
+      index.html
+      css/dashboard.css
+      js/dashboard.js
+   data/
+   README.md
+   USER_GUIDE.md
 ```
 
----
+## 10. Troubleshooting express
 
-## Pour aller plus loin
+1.  UI ne charge pas: docker compose up --build
+2.  Pas de donnees: lancer ingest.py
+3.  Commandes Redis vides: chauffer le cache via onglet Performance ou appel /movies/{id}
+4.  Script ingestion timeout internet: relancer ingestion, l archive locale est reutilisee si deja telechargee
 
-- **Redis Cluster** : modifier `docker-compose.yml` pour ajouter des nœuds Redis en sharding
-- **Pub/Sub** : ajouter un channel Redis pour les notifications temps réel
-- **Redis Streams** : remplacer MongoDB comme source par des streams Redis (IoT-style)
-- **Grafana + RedisTimeSeries** : dashboard temps réel avec persistance des métriques
+## 11. Valeur pedagogique du tuto
 
----
+Ce projet n est pas un simple CRUD.
 
-## Références
+Il montre:
 
-- [Redis documentation](https://redis.io/docs/)
-- [MovieLens Dataset — GroupLens](https://grouplens.org/datasets/movielens/)
-- Cours UE BigData — Hélène Coullon, IMT Atlantique (2025-2026)
-- [CAP Theorem — Gilbert & Lynch, 2002](https://dl.acm.org/doi/10.1145/564585.564601)
+1.  un vrai pattern cache-aside
+2.  des structures Redis utiles en production
+3.  des gains de latence mesurables
+4.  une demo integrale exploitable devant une classe
+
+## 12. A lire ensuite
+
+Le guide complet de l interface, des commandes et des termes est dans USER_GUIDE.md.
+
+- Comparaison latence Redis vs MongoDB

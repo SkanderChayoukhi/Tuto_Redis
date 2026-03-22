@@ -1,514 +1,284 @@
-# Redis Inspector Pro - User Guide & Learning Exercises
+# USER GUIDE - Redis Inspector Pro
 
-## Getting Started with the Dashboard
+Ce guide explique litteralement tout ce qui est visible et executable dans l interface UI, ainsi que les scripts et fichiers de code associes.
 
-### Accessing the Dashboard
+Objectif: pouvoir utiliser le tutoriel en autonomie, faire une demo complete en classe, et comprendre chaque terme technique utilise.
 
-1. **Start the system**:
+## 1. Avant de commencer
 
-   ```bash
-   cd redis-bigdata-tuto
-   docker-compose up --build
-   ```
+Demarrage minimal:
 
-2. **Load data**:
-
-   ```bash
-   python src/ingest.py
-   ```
-
-3. **Open in browser**:
-   ```
-   http://localhost:8000
-   ```
-
-You should see a colorful dashboard with real-time metrics!
-
----
-
-## Dashboard Walkthrough
-
-### 📊 Dashboard Tab (Default View)
-
-This tab shows live metrics from your Redis cache:
-
-```
-┌─────────────────────────────────────────┐
-│ Redis Inspector Pro          [Connected]│
-├─────────────────────────────────────────┤
-│  Cache Hit Ratio    Memory Used    Avg Latency    RPS
-│    85.3%            12.5 MB        2.1 ms        4200
-│ 85 hits / 100 req   Peak: 15 MB    Last 100 req  (req/sec)
-└─────────────────────────────────────────┘
-
-[Charts Below]
+```bash
+docker compose up --build
+docker compose exec api python src/ingest.py
 ```
 
-**What Each Metric Means**:
+Puis ouvrir:
 
-- **Cache Hit Ratio (85%)**: Of the last 100 requests, 85 were answered by Redis (fast), 15 hit MongoDB (slow)
-- **Memory Used (12.5 MB)**: Redis is consuming 12.5 MB of your computer's RAM
-- **Avg Latency (2.1 ms)**: Average response time for the last request batch
-- **RPS (4200)**: Redis is handling 4,200 requests per second
+1. UI: http://localhost:8000
+2. Health: http://localhost:8000/health
 
-**Interactive Charts**:
+## 2. Vue d ensemble de l interface
 
-1. **Latency Trend**: Line chart showing response times over last ~20 requests
-   - Flat line = consistent performance ✓
-   - Spikes up = possible cache misses
+L UI contient 5 onglets principaux:
 
-2. **Top 10 Movies**: Bar chart showing which movies are accessed most
-   - This data comes from the `leaderboard:movies` Sorted Set
-   - Taller bars = more popular movies
+1. Dashboard
+2. Command Executor
+3. Data Inspector
+4. Performance
+5. Automation
 
-3. **Memory Distribution**: Pie chart of RAM usage
-   - All data is currently in single Redis instance
-   - In production, this helps you understand storage needs
+Chaque onglet est lie a des endpoints backend FastAPI et a des structures Redis precises.
 
-4. **Cache Efficiency**: Gauge showing hit/miss ratio
-   - Green = high ratio (> 80%)
-   - Red = low ratio (data not cached well)
+## 3. Dashboard (metriques et graphs live)
 
----
+### 3.1 Cartes metriques
 
-## 💻 Command Executor Tab
+1. Cache Hit Ratio
+2. Memory Used
+3. Avg Latency
+4. Requests/sec
 
-This is like a **Redis CLI in your browser**. Type any Redis command!
+Definitions:
 
-### Example Workflow
+1. Hit: requete servie depuis Redis.
+2. Miss: requete servie depuis MongoDB puis mise en cache.
+3. Avg Latency: moyenne des latences recentes.
+4. Requests/sec: debit instantane observe.
 
-#### Exercise 1: Explore Cached Movies
+### 3.2 Dataset Status
 
-```
-> (Open Performance tab and click "Warm Cache" first)
+Ce bloc affiche:
 
-> KEYS movie:*
-(Returns all movie keys like: movie:1, movie:110, movie:27, ...)
+1. nombre de movies
+2. nombre de ratings
+3. nombre de tags
+4. badge Loaded ou Not Loaded
+5. Last update
 
-> GET movie:1
-(Returns: {"movieId":"1", "title":"Toy Story", "avg_rating":4.14, ...})
-
-> TTL movie:1
-(Returns: 3598 - expires in 3598 seconds = ~1 hour)
-```
-
-**What You Learned**:
-
-- `KEYS pattern` = find all keys matching pattern
-- `GET key` = retrieve a cached value
-- `TTL key` = time until key expires (in seconds)
-- The integrated Command Executor talks directly to Redis.
-- If `KEYS movie:*` is empty, warm the cache first from the Performance tab.
-
-#### Exercise 2: Check Cache Statistics
-
-```
-> DBSIZE
-(Returns: 437 - there are 437 keys in Redis)
-
-> INFO stats
-(Returns: detailed info about hits, misses, evictions, etc.)
-```
-
-#### Exercise 3: Explore the Leaderboard
-
-```
-> ZREVRANGE leaderboard:movies 0 4 WITHSCORES
-([["1", "487"], ["110", "382"], ["27", "273"], ["48", "214"], ["227", "195"]])
+Source API: endpoint dataset status.
 
 Interpretation:
-  - Movie 1 has been viewed/accessed 487 times ⭐ MOST POPULAR
-  - Movie 110 has been viewed 382 times
-  - Movie 27 has been viewed 273 times
-  - ... and so on
+
+1. Loaded = donnees presentes en base, demo possible.
+2. Not Loaded = lancer ingestion.
+
+### 3.3 Graphiques
+
+1. Request Latency Trend
+2. Top 10 Movies (views)
+3. Memory Distribution
+4. Cache Efficiency
+
+Que regarder pendant la demo:
+
+1. baisse de latence apres warm cache
+2. progression du hit ratio
+3. evolution du leaderboard pendant les requetes
+
+## 4. Command Executor (CLI Redis integre)
+
+Cet onglet envoie des commandes Redis depuis l UI.
+
+Important: il parle directement a Redis. Il ne remplace pas les endpoints applicatifs.
+
+### 4.1 Commandes a tester en live
+
+```redis
+KEYS *
+KEYS movie:*
+GET movie:1
+TTL movie:1
+DBSIZE
+INFO stats
+ZREVRANGE leaderboard:movies 0 4 WITHSCORES
 ```
 
-**What You Learned**:
+### 4.2 Pourquoi parfois GET movie:1 renvoie null
 
-- `ZREVRANGE key 0 N WITHSCORES` = get top N by score
-- This is useful for **leaderboards**, **trending items**, **popularity rankings**
+Cause typique:
 
-#### Exercise 4: Add New Data
+1. cache pas encore chauffe
+2. TTL expire
 
-```
-> SET my_test_key "Hello Redis!"
-(Returns: OK)
+Solution:
 
-> GET my_test_key
-(Returns: "Hello Redis!")
+1. onglet Performance puis Warm Cache
+2. ou appeler /movies/1
 
-> EXPIRE my_test_key 10
-(Set expiration to 10 seconds - then watch it disappear!)
+## 5. Data Inspector (exploration des cles)
 
-> GET my_test_key
-(After 10 seconds: returns nil - expired!)
-```
+Fonction:
 
-**What You Learned**:
+1. lister les cles Redis
+2. afficher type, ttl et valeur
+3. inspecter string, hash, list, set, zset
 
-- You can set arbitrary data in Redis
-- TTL makes cache automatically clean up old data
-- This prevents memory from filling up forever
+Cas d usage:
 
-#### Exercise 5: Rate Limiting Check
+1. verifier qu une cle movie:{id} existe
+2. verifier TTL et expiration
+3. expliquer la structure leaderboard:movies
 
-```
-> GET rate:127.0.0.1
-(Returns your IP's request count in current minute)
+## 6. Performance (comparaison cold vs warm)
 
-> INCR rate:127.0.0.1
-(Simulate a new request - count goes up)
-```
+### 6.1 Boutons
 
----
+1. Flush Cache (Cold Start)
+2. Warm Cache
 
-## 🔍 Data Inspector Tab
+### 6.2 Logique
 
-This tab shows all keys stored in Redis and their details.
+1. Flush: vide Redis, prochaine requete plus lente
+2. Warm: precharge des films populaires, requetes suivantes plus rapides
 
-### Walkthrough
+### 6.3 Graphique Latency Comparison
 
-**Left panel**: List of all keys
+Affiche 2 barres:
 
-```
-movie:1               (string)  ttl: 3456s
-movie:110             (string)  ttl: 3421s
-movie:27              (string)  ttl: 3398s
-leaderboard:movies    (zset)    ttl: -1 (never expires)
-rate:127.0.0.1        (string)  ttl: 45s
-search:genre:Action   (string)  ttl: 2134s
-...
-```
+1. Cold Cache
+2. Warm Cache
 
-**Right panel**: Details when you click a key
+Objectif pedagogique:
 
-```
-Key: movie:1
-Type: string
-TTL: 3455
+1. visualiser clairement le gain de cache
+2. relier la theorie au comportement observe
 
-Value:
-{
-  "movieId": "1",
-  "title": "Toy Story (1995)",
-  "genres": ["Adventure", "Animation", "Comedy"],
-  "avg_rating": 4.14,
-  "rating_count": 247
-}
-```
+## 7. Automation (scripts depuis UI)
 
-### Analysis Tasks
+Cet onglet permet de lancer les scripts Python sans terminal.
 
-1. **Count movies cached**: Count how many `movie:*` keys exist (tells you cache size)
-2. **Find expiring soon**: Look for keys with low TTL (< 60s)
-3. **Check leaderboard**: Click `leaderboard:movies` to see top movies
-4. **Inspect searches**: Look at `search:genre:*` keys to see cached searches
+Scripts disponibles:
 
----
+1. ingest.py
+2. benchmark.py
+3. visualize.py
 
-## ⚡ Performance Tab
+### 7.1 Ce que montre cet onglet
 
-Compare how fast Redis is vs MongoDB.
+1. statut des scripts (Idle, Running, Completed, Failed)
+2. job actif
+3. logs en direct
+4. historique des jobs
+5. preview image de visualize.py
 
-### Benchmark Challenge
+### 7.2 Comportement de chaque script
 
-1. **Click "Flush Cache (Cold Start)"**
-   - This deletes all cached data
-   - Next request will be slow (hits MongoDB)
-2. **Make a request** (via Command Executor):
-   - The dashboard triggers one real `/movies/1` API call after flush.
-   - You should observe a high "Cold Cache" value.
+1. ingest.py
+   1. telecharge ou reutilise l archive locale du dataset
+   2. recharge MongoDB
+   3. warmup de metriques
+2. benchmark.py
+   1. lance serie de requetes cold puis warm
+   2. imprime latences et speedup
+3. visualize.py
+   1. collecte metriques
+   2. genere image dashboard/redis_dashboard.png
 
-3. **Click "Warm Cache"**
-   - Rebuilds the most popular movies in cache
-4. **Make the same request again**:
-   - After warm-up, the dashboard measures `/movies/1` again.
-   - You should observe a lower "Warm Cache" value.
+### 7.3 Bonnes pratiques demo
 
-5. **Watch the chart**: Compare "Cold Cache" vs "Warm Cache" bars
+1. lancer ingest avant la presentation
+2. lancer benchmark en direct pour montrer le gain
+3. lancer visualize a la fin pour obtenir une figure exportable
 
----
+## 8. Tous les termes a connaitre
 
-## 🚀 Learning Exercises
+1. Cache Hit: donnee disponible en cache
+2. Cache Miss: donnee absente du cache
+3. Hot Cache: cache deja rempli
+4. Cold Cache: cache vide ou peu rempli
+5. TTL: Time To Live d une cle
+6. p50: mediane des latences
+7. p95: 95 percent des latences sous ce seuil
+8. p99: 99 percent des latences sous ce seuil
+9. RPS: Requests Per Second
+10. Leaderboard: classement dans un Sorted Set
+11. Rate Limiting: limitation du nombre de requetes par IP
+12. Cache-Aside: pattern applicatif de cache utilise ici
 
-### Exercise 1: Cache Hit Ratio Optimization
+## 9. Commandes CLI utiles hors UI
 
-**Goal**: Get cache hit ratio above 90%
+### 9.1 Docker
 
-**Steps**:
-
-1. Go to Command Executor
-2. Run: `GET movie:1`, `GET movie:110`, `GET movie:27` (multiple times)
-3. Watch Cache Hit Ratio in Dashboard
-4. If still low, request more different movies to populate cache
-
-**Learning**: High hit ratios require frequently accessing the same data (Zipf's Law)
-
----
-
-### Exercise 2: TTL (Time To Live) Experiment
-
-**Goal**: Watch keys expire
-
-**Steps**:
-
-1. Command Executor: `SET temporary_key "This will expire" EX 5`
-2. Data Inspector: Click on `temporary_key` and note the TTL (should be ~5)
-3. Wait 6 seconds
-4. Refresh Data Inspector: key should be gone!
-
-**Learning**: TTL keeps cache fresh without manual invalidation
-
----
-
-### Exercise 3: Leaderboard Ranking
-
-**Goal**: Find the top 5 most accessed movies
-
-**Steps**:
-
-1. Command Executor: `ZREVRANGE leaderboard:movies 0 4 WITHSCORES`
-2. Alternatively, view "Top 10 Movies" chart in Dashboard
-3. Note which movies are popular
-
-**Question**: Why are certain movies more popular?
-
-- **Answer**: Depends on the dataset, but typically:
-  - Newer movies (recent releases)
-  - Well-known movies (Toy Story, Avatar)
-  - Highly-rated movies
-
-**Learning**: Sorted Sets enable efficient ranking without expensive sorting
-
----
-
-### Exercise 4: Memory vs Speed Tradeoff
-
-**Goal**: Understand why caching uses more storage
-
-**Steps**:
-
-1. Dashboard: Check "Memory Used" - note the amount
-2. Command Executor: `DBSIZE` - count of keys
-3. Calculate: Memory Used / DBSIZE = bytes per key
-
-**Analysis**:
-
-- MovieLens data: ~3KB per movie (with stats)
-- 100 movies in cache = 300KB
-- 1000 movies in cache = 3MB
-
-**Question**: If we cache all 10,000 movies, memory needed?
-
-- **Answer**: 30MB (acceptable)
-- But what if data was 10x larger (photos)? 300MB needed!
-
-**Learning**: Cache effectively requires balancing memory vs coverage
-
----
-
-### Exercise 5: Rate Limiting Simulation
-
-**Goal**: See rate limiting in action
-
-**Steps**:
-
-1. Rapidly send requests to `/movies/1` (use benchmark)
-2. Check rate limit key: `GET rate:127.0.0.1`
-3. Request counter increases
-4. Wait 60 seconds
-5. Check again: counter resets!
-
-**Learning**: Redis `INCR` enables fast rate limiting without database
-
----
-
-### Exercise 6: Consistency Check
-
-**Goal**: Detect stale cache
-
-**Steps**:
-
-1. Command Executor: `GET movie:1` - note the `avg_rating`
-2. Imagine MongoDB was updated with new ratings
-3. Command Executor: `DEL movie:1` - invalidate cache
-4. Request again: `GET movie:1` - should be slow (updated from MongoDB)
-5. Second request: fast again (re-cached)
-
-**Learning**: Cache invalidation is important for consistency (CAP theorem A vs C)
-
----
-
-## 📈 Real-World Scenarios
-
-### Scenario 1: Black Friday Flash Sale
-
-**Situation**: A movie gets 1000 searches in 1 minute
-
-**Without Redis**:
-
-- Every search hits MongoDB
-- Database gets 1000 req/sec - CRASHES ❌
-
-**With Redis**:
-
-- First search: cold miss → MongoDB (slow)
-- Next 999 searches: cache hit → Redis (instant)
-- Database gets 1 req/sec - NO PROBLEM ✓
-
-**Redis benefit**: 1000x amplification of cache hit = system survives traffic spike
-
----
-
-### Scenario 2: Global User Base
-
-**Situation**: Users from US, Europe, and Asia all accessing movies
-
-**Architecture**:
-
-```
-┌─────────────────────────────────┐
-│ Global Load Balancer            │
-├─────────────────────────────────┤
-│ US Servers                      │ Europe Servers              │ Asia Servers
-│ ├─ Redis (cache)                │ ├─ Redis (cache)           │ ├─ Redis (cache)
-│ ├─ FastAPI      |               │ ├─ FastAPI                 │ ├─ FastAPI
-│ └─ MongoDB copy │               │ └─ MongoDB replica         │ └─ MongoDB copy
-└──────────────────────────────────────────────────────────────┘
+```bash
+docker compose ps
+docker compose logs api
+docker compose restart api
 ```
 
-**Without local Redis**:
+### 9.2 Ingestion et benchmark
 
-- US user requests → latency 100ms
-- Europe user requests → latency 100ms (same servers)
-- Asia user requests → latency 500ms (far away)
+```bash
+docker compose exec api python src/ingest.py
+python src/benchmark.py
+python dashboard/visualize.py
+```
 
-**With local Redis**:
+### 9.3 API test rapide
 
-- All users: latency 2ms (cache is local)
+```bash
+curl http://localhost:8000/health
+curl http://localhost:8000/movies/1
+curl http://localhost:8000/stats
+curl http://localhost:8000/api/metrics
+```
 
-**Learning**: Caching solves geographic latency problems
+## 10. Lien UI <-> code files (ce qui fait quoi)
 
----
+1. src/main.py
+   1. endpoints metier movies/stats/cache
+   2. endpoints UI /api/metrics /api/keys /api/command
+   3. endpoints automation scripts/jobs/artifacts
+2. src/ingest.py
+   1. telechargement dataset
+   2. chargement MongoDB
+   3. warmup
+3. src/benchmark.py
+   1. scenario cold/warm
+   2. affichage des mesures
+4. dashboard/visualize.py
+   1. generation figure matplotlib
+5. static/index.html
+   1. structure de tous les onglets
+6. static/js/dashboard.js
+   1. logique frontend, polling, charts, actions
+7. static/css/dashboard.css
+   1. styles UI
 
-### Scenario 3: Peak vs Off-Peak
+## 11. Checklist de demo 15 min
 
-**Peak Hours (8-11pm TV watching)**:
+1. Verifier containers UP
+2. Verifier dataset loaded
+3. Ouvrir Dashboard et commenter les 4 KPIs
+4. Montrer Command Executor avec commandes tests
+5. Montrer Data Inspector
+6. Faire Flush puis Warm dans Performance
+7. Lancer benchmark et visualize depuis Automation
+8. Conclure sur gains et limites
 
-- 10 million concurrent users
-- Need 5000 cache servers to handle load
+## 12. FAQ rapide
 
-**Off-Peak Hours (3-6am)**:
+1. Pourquoi les compteurs ne bougent pas?
+   1. verifier polling UI
+   2. verifier endpoint /api/metrics
+2. Pourquoi aucune cle movie:\*?
+   1. cache pas chauffe
+   2. lancer warm cache
+3. Pourquoi ingest peut echouer?
+   1. timeout internet sur le download initial
+   2. relancer, archive locale reutilisable
 
-- 100,000 users
-- Need 5 cache servers
+## 13. Message final pour la classe
 
-**Cost Optimization**:
+Ce tutoriel montre en pratique:
 
-- Use auto-scaling: add cache servers during peak
-- Redis Cluster can add/remove nodes dynamically
-- Save costs by scaling down at night
+1. comment un cache Redis transforme les performances
+2. comment instrumenter et visualiser un systeme NoSQL
+3. comment relier theorie Big Data et demonstration live
 
-**Learning**: Cloud-native caching enables cost-efficient operations
+Si la classe veut reproduire rapidement:
 
----
-
-## 🎓 Quiz & Assessment
-
-### Questions for Your Portfolio
-
-1. **What is the hit ratio you can achieve?**
-   - Run benchmark, take screenshot of dashboard
-2. **How much memory does 100 cached movies use?**
-   - Use `INFO memory` before and after caching
-3. **What's the latency reduction between cold and warm cache?**
-   - Use Performance tab, calculate speedup
-4. **Design a caching strategy for 1 billion users**
-   - How many cache servers needed? (Assume 2MB per customer session)
-   - How much would it cost?
-   - What's the ROI vs not caching?
-
-5. **If cache memory is limited to 256MB, which 1000 movies should we keep?**
-   - Answer: Top 1000 by view count (Zipf's Law)
-   - Verify using leaderboard
-
----
-
-## 🐛 Troubleshooting
-
-### Dashboard shows 0% hit ratio
-
-**Cause**: Cache is empty (just started)
-
-**Solution**:
-
-1. Generate traffic: repeatedly request `/movies/1`
-2. Wait for 20+ requests
-3. Hit ratio will increase as cache fills
-
-### Memory keeps increasing
-
-**Cause**: No TTL on keys, cache growing unbounded
-
-**Solution**:
-
-1. Check: `INFO memory` - how much used?
-2. Set maxmemory: `CONFIG SET maxmemory 256mb`
-3. Set eviction: `CONFIG SET maxmemory-policy allkeys-lru`
-
-### Command Executor shows "Command not supported"
-
-**Cause**: That command isn't in the tutorial whitelist
-
-**Solution**: Use only these commands:
-
-- GET, SET, INCR, DECR, DEL, KEYS, TTL, EXPIRE, TYPE, DBSIZE
-- HGET, HGETALL, HSET, HLEN
-- ZRANGE, ZREVRANGE, ZADD, ZCARD, ZINCRBY
-- SADD, SMEMBERS, SCARD
-- INFO
-
----
-
-## 📚 Resources
-
-### Inside the Tutorial
-
-- `TUTORIAL.md` - Complete Big Data concepts
-- `CREATIVE_IMPROVEMENTS.md` - Architecture details
-- `src/main.py` - Source code comments
-- `src/benchmark.py` - Performance testing code
-
-### External
-
-- [Redis Commands](https://redis.io/commands/)
-- [Redis Best Practices](https://docs.redis.com/latest/rs/references/best-practices/)
-- [Big Data Architecture Patterns](https://aws.amazon.com/big-data/)
-
----
-
-## 🎉 You've Completed the Tutorial!
-
-You've learned:
-
-- ✅ How Redis works (key-value store)
-- ✅ Cache hit/miss ratios
-- ✅ TTL and cache expiration
-- ✅ Data structures (strings, sorted sets, hashes)
-- ✅ Leaderboards and rankings
-- ✅ Rate limiting
-- ✅ Performance optimization (25x speedups!)
-- ✅ Big Data concepts (velocity, scalability, CAP theorem)
-
-**Next Steps**:
-
-1. Modify `src/main.py` to add new features
-2. Implement more complex caching strategies
-3. Set up Redis Cluster (bonus!)
-4. Deploy to cloud (AWS, Azure, GCP)
-
-**Congratulations!** 🎓
-
----
-
-_Interactive Big Data Learning | IMT Atlantique 2026_
+1. cloner le repo
+2. docker compose up --build
+3. docker compose exec api python src/ingest.py
+4. ouvrir http://localhost:8000
