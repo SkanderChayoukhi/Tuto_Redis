@@ -281,6 +281,16 @@ input.form-control {
     font-size: 0.9rem;
 }
 
+.cli-reference-block {
+    background: #111827;
+    color: #f9fafb;
+    border: 1px solid #374151;
+    border-radius: 8px;
+    padding: 0.85rem;
+    font-size: 0.82rem;
+    line-height: 1.45;
+}
+
 /* DATASET STATUS */
 .dataset-stat-box {
     background: #f8f9fa;
@@ -359,6 +369,31 @@ input.form-control {
     color: var(--text-secondary);
 }
 
+.benchmark-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.8rem;
+}
+
+.benchmark-summary-item {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0.8rem;
+    background: #f8f9fa;
+}
+
+.benchmark-summary-item .label {
+    color: var(--text-secondary);
+    font-size: 0.84rem;
+    margin-bottom: 0.2rem;
+}
+
+.benchmark-summary-item .value {
+    font-size: 1.15rem;
+    font-weight: 700;
+    font-family: 'Monaco', 'Courier New', monospace;
+}
+
 #visualizationPreview {
     width: 100%;
     max-height: 620px;
@@ -393,6 +428,10 @@ canvas {
 
     .nav-tabs .nav-link {
         font-size: 0.9rem;
+    }
+
+    .benchmark-summary-grid {
+        grid-template-columns: 1fr;
     }
 }
 

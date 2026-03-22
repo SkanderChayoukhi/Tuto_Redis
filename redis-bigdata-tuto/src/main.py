@@ -17,11 +17,12 @@ import logging
 import re
 import sys
 import uuid
+from io import BytesIO
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 import redis.asyncio as aioredis
 import motor.motor_asyncio as motor
@@ -34,6 +35,8 @@ REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/movielens")
 CACHE_TTL = int(os.getenv("CACHE_TTL", 60))         # secondes
 RATE_LIMIT = int(os.getenv("RATE_LIMIT", 100))       # req / minute / IP
+DEMO_MODE = os.getenv("DEMO_MODE", "true").lower() in {
+    "1", "true", "yes", "on"}
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = PROJECT_DIR / "static"
 DASHBOARD_DIR = PROJECT_DIR / "dashboard"
@@ -106,7 +109,8 @@ def _serialize_job(job: dict) -> dict:
         "logs": job.get("logs", []),
         "command": job["command"],
         "artifact_url": artifact_url,
-        "error": job.get("error")
+        "error": job.get("error"),
+        "summary": job.get("summary")
     }
 
 
@@ -138,6 +142,15 @@ async def _run_script_job(job_id: str):
             decoded = line.decode("utf-8", errors="replace").rstrip()
             if not decoded:
                 continue
+
+            if decoded.startswith("BENCHMARK_SUMMARY_JSON:"):
+                payload = decoded.split(
+                    "BENCHMARK_SUMMARY_JSON:", 1)[1].strip()
+                try:
+                    job["summary"] = json.loads(payload)
+                except Exception as parse_error:
+                    job["logs"].append(
+                        f"[runner] Failed to parse benchmark summary: {parse_error}")
 
             job["logs"].append(decoded)
             if len(job["logs"]) > MAX_SCRIPT_LOG_LINES:
@@ -596,6 +609,8 @@ async def get_scripts_catalog():
 
     return {
         "busy": bool(active_job and active_job["status"] == "running"),
+        "demo_mode": DEMO_MODE,
+        "tutorial_only_notice": "Automation endpoints are tutorial-only and intended for classroom demos.",
         "active_job": _serialize_job(active_job) if active_job else None,
         "scripts": scripts,
         "recent_jobs": recent_jobs
@@ -606,6 +621,12 @@ async def get_scripts_catalog():
 async def run_automation_script(script_name: str):
     """Launch a project script as a background job."""
     global _active_script_job_id
+
+    if not DEMO_MODE:
+        raise HTTPException(
+            status_code=403,
+            detail="Script launch is disabled. Set DEMO_MODE=true for tutorial/demo usage."
+        )
 
     script_def = SCRIPT_DEFS.get(script_name)
     if not script_def:
@@ -659,6 +680,12 @@ async def cancel_script_job(job_id: str):
     """Terminate a running automation job."""
     global _active_script_job_id
 
+    if not DEMO_MODE:
+        raise HTTPException(
+            status_code=403,
+            detail="Script cancellation is disabled when DEMO_MODE is off."
+        )
+
     job = _script_jobs.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -700,3 +727,45 @@ async def get_script_artifact(script_name: str):
 
     media_type = "image/png" if artifact_path.suffix == ".png" else None
     return FileResponse(str(artifact_path), media_type=media_type)
+
+
+@app.get("/api/scripts/jobs/{job_id}/export")
+async def export_script_job(job_id: str, format: str = "txt"):
+    """Download script job logs and metadata for reporting."""
+    job = _script_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    serialized = _serialize_job(job)
+    safe_script = re.sub(r"[^a-zA-Z0-9_-]", "_", serialized["script"])
+    safe_job = re.sub(r"[^a-zA-Z0-9_-]", "_", serialized["id"])
+
+    if format == "json":
+        payload = json.dumps(serialized, indent=2, ensure_ascii=True)
+        filename = f"{safe_script}_{safe_job}.json"
+        return StreamingResponse(
+            BytesIO(payload.encode("utf-8")),
+            media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+
+    if format == "txt":
+        lines = [
+            f"Script: {serialized['label']} ({serialized['script']})",
+            f"Job ID: {serialized['id']}",
+            f"Status: {serialized['status']}",
+            f"Started: {serialized['started_at']}",
+            f"Finished: {serialized.get('finished_at')}",
+            f"Return code: {serialized.get('returncode')}",
+            "",
+            "=== Logs ===",
+            *serialized.get("logs", []),
+        ]
+        filename = f"{safe_script}_{safe_job}.log.txt"
+        return StreamingResponse(
+            BytesIO("\n".join(lines).encode("utf-8")),
+            media_type="text/plain",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+
+    raise HTTPException(status_code=400, detail="Supported formats: txt, json")

@@ -10,7 +10,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
-    <link rel="stylesheet" href="/static/css/dashboard.css?v=20260322-automation-1">
+    <link rel="stylesheet" href="/static/css/dashboard.css?v=20260322-automation-2">
 </head>
 <body>
     <div class="page-wrapper">
@@ -283,6 +283,17 @@
                                             <code>HLEN key</code> - Count fields
                                         </small>
                                     </div>
+                                    <hr>
+                                    <div class="mb-0">
+                                        <h6 class="text-primary">Demo Reference Block</h6>
+                                        <pre class="cli-reference-block mb-0">KEYS *
+KEYS movie:*
+GET movie:1
+TTL movie:1
+DBSIZE
+INFO stats
+ZREVRANGE leaderboard:movies 0 4 WITHSCORES</pre>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -356,6 +367,11 @@
 
                 <!-- AUTOMATION TAB -->
                 <div class="tab-pane fade" id="automation-panel" role="tabpanel">
+                    <div class="alert alert-warning d-flex justify-content-between align-items-center mb-4" id="demoModeNotice">
+                        <span><strong>Tutorial-only automation:</strong> script launch endpoints are intended for demo/classroom use.</span>
+                        <span class="badge bg-dark" id="demoModeBadge">DEMO MODE: ON</span>
+                    </div>
+
                     <div class="row g-4 mb-4">
                         <div class="col-lg-4">
                             <div class="card automation-card h-100">
@@ -424,6 +440,17 @@
                                     <h6 class="mb-0"><i class="fas fa-scroll"></i> Automation Log</h6>
                                 </div>
                                 <div class="card-body bg-dark command-terminal">
+                                    <div class="d-flex gap-2 mb-3">
+                                        <button class="btn btn-outline-light btn-sm" id="downloadLogTxtBtn" disabled>
+                                            <i class="fas fa-download"></i> Export logs (.txt)
+                                        </button>
+                                        <button class="btn btn-outline-light btn-sm" id="downloadJobJsonBtn" disabled>
+                                            <i class="fas fa-file-code"></i> Export job (.json)
+                                        </button>
+                                        <button class="btn btn-outline-light btn-sm" id="downloadSummaryJsonBtn" disabled>
+                                            <i class="fas fa-chart-column"></i> Export summary (.json)
+                                        </button>
+                                    </div>
                                     <div id="scriptLogOutput" class="terminal-output mb-0">
                                         <div class="output-line">No script output yet.</div>
                                     </div>
@@ -483,6 +510,48 @@
                     <ul>
                         <li><strong>Dashboard</strong> - Real-time metrics and visualizations</li>
                         <li><strong>Command Executor</strong> - Run Redis commands directly</li>
+                        <div class="col-lg-8">
+                            <div class="card h-100">
+                                <div class="card-header">
+                                    <h6 class="mb-0"><i class="fas fa-gauge-high"></i> Benchmark Summary</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div id="benchmarkSummaryEmpty" class="text-muted text-center py-4">
+                                        Run benchmark.py from Automation to populate structured metrics.
+                                    </div>
+                                    <div id="benchmarkSummaryGrid" class="benchmark-summary-grid d-none">
+                                        <div class="benchmark-summary-item">
+                                            <div class="label">Mean (Cold)</div>
+                                            <div class="value" id="summaryColdMean">0.00 ms</div>
+                                        </div>
+                                        <div class="benchmark-summary-item">
+                                            <div class="label">Mean (Warm)</div>
+                                            <div class="value" id="summaryWarmMean">0.00 ms</div>
+                                        </div>
+                                        <div class="benchmark-summary-item">
+                                            <div class="label">Speedup</div>
+                                            <div class="value" id="summarySpeedup">0.0x</div>
+                                        </div>
+                                        <div class="benchmark-summary-item">
+                                            <div class="label">p95 Cold</div>
+                                            <div class="value" id="summaryColdP95">0.00 ms</div>
+                                        </div>
+                                        <div class="benchmark-summary-item">
+                                            <div class="label">p95 Warm</div>
+                                            <div class="value" id="summaryWarmP95">0.00 ms</div>
+                                        </div>
+                                        <div class="benchmark-summary-item">
+                                            <div class="label">Hit Ratio</div>
+                                            <div class="value" id="summaryHitRatio">0.0%</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row g-4 mt-0">
+                        <div class="col-12">
                         <li><strong>Data Inspector</strong> - View what's stored in Redis</li>
                         <li><strong>Performance</strong> - Compare cache efficiency</li>
                         <li><strong>Automation</strong> - Launch ingestion, benchmark, and visualization scripts</li>
@@ -505,6 +574,6 @@
 
     <!-- SCRIPTS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
-    <script src="/static/js/dashboard.js?v=20260322-automation-1"></script>
+    <script src="/static/js/dashboard.js?v=20260322-automation-2"></script>
 </body>
 </html>

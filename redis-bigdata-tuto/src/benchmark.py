@@ -11,6 +11,7 @@ Usage :
 import time
 import statistics
 import random
+import json
 import httpx
 from rich.console import Console
 from rich.table import Table
@@ -36,7 +37,8 @@ def fetch_movie(movie_id: str) -> tuple[float, str]:
 
 
 def run_benchmark(n_requests: int = 50):
-    console.print(Panel.fit("[bold cyan]Benchmark Redis Cache — BigData UE[/bold cyan]"))
+    console.print(
+        Panel.fit("[bold cyan]Benchmark Redis Cache — BigData UE[/bold cyan]"))
 
     # ── Phase 1 : cache froid (tout vient de MongoDB) ──
     console.print("\n[bold]Phase 1 : Cache FROID (cache miss attendu)[/bold]")
@@ -46,7 +48,8 @@ def run_benchmark(n_requests: int = 50):
         movie_id = random.choice(POPULAR_IDS)
         latency, source = fetch_movie(movie_id)
         cold_latencies.append(latency)
-        console.print(f"  [{i+1:02d}] movie={movie_id:>4} → {source:<12} {latency:>7.2f} ms")
+        console.print(
+            f"  [{i+1:02d}] movie={movie_id:>4} → {source:<12} {latency:>7.2f} ms")
 
     # ── Phase 2 : cache chaud (tout vient de Redis) ──
     console.print("\n[bold]Phase 2 : Cache CHAUD (cache hit attendu)[/bold]")
@@ -55,10 +58,12 @@ def run_benchmark(n_requests: int = 50):
         movie_id = random.choice(POPULAR_IDS)
         latency, source = fetch_movie(movie_id)
         hot_latencies.append(latency)
-        console.print(f"  [{i+1:02d}] movie={movie_id:>4} → {source:<12} {latency:>7.2f} ms")
+        console.print(
+            f"  [{i+1:02d}] movie={movie_id:>4} → {source:<12} {latency:>7.2f} ms")
 
     # ── Résultats ──
-    _print_results(cold_latencies, hot_latencies, n_requests)
+    summary = _build_summary(cold_latencies, hot_latencies)
+    _print_results(summary)
 
     # ── Stats globales ──
     stats = httpx.get(f"{BASE_URL}/stats").json()
@@ -66,26 +71,72 @@ def run_benchmark(n_requests: int = 50):
                   f"(hits={stats['hits']}, misses={stats['misses']})")
     console.print(f"Mémoire Redis utilisée : {stats['redis_memory_mb']} MB")
 
+    summary["cache_stats"] = {
+        "hit_ratio_pct": stats.get("hit_ratio_pct", 0),
+        "hits": stats.get("hits", 0),
+        "misses": stats.get("misses", 0),
+        "redis_memory_mb": stats.get("redis_memory_mb", 0),
+    }
+    # Machine-readable line for dashboard automation parsing.
+    print(f"BENCHMARK_SUMMARY_JSON:{json.dumps(summary, ensure_ascii=True)}")
+    return summary
 
-def _print_results(cold: list, hot: list, n: int):
-    table = Table(title="Résultats du benchmark", show_header=True, header_style="bold cyan")
+
+def _build_summary(cold: list, hot: list):
+    def percentile(data: list[float], p: int) -> float:
+        if not data:
+            return 0.0
+        idx = min(max(int(len(data) * p / 100), 0), len(data) - 1)
+        return float(sorted(data)[idx])
+
+    cold_metrics = {
+        "mean_ms": float(statistics.mean(cold)) if cold else 0.0,
+        "p50_ms": float(statistics.median(cold)) if cold else 0.0,
+        "p95_ms": percentile(cold, 95),
+        "p99_ms": percentile(cold, 99),
+        "max_ms": float(max(cold)) if cold else 0.0,
+        "min_ms": float(min(cold)) if cold else 0.0,
+    }
+    hot_metrics = {
+        "mean_ms": float(statistics.mean(hot)) if hot else 0.0,
+        "p50_ms": float(statistics.median(hot)) if hot else 0.0,
+        "p95_ms": percentile(hot, 95),
+        "p99_ms": percentile(hot, 99),
+        "max_ms": float(max(hot)) if hot else 0.0,
+        "min_ms": float(min(hot)) if hot else 0.0,
+    }
+
+    speedup = cold_metrics["mean_ms"] / \
+        hot_metrics["mean_ms"] if hot_metrics["mean_ms"] > 0 else 0.0
+    return {
+        "requests_per_phase": len(cold),
+        "cold": cold_metrics,
+        "warm": hot_metrics,
+        "speedup_x": float(speedup),
+    }
+
+
+def _print_results(summary: dict):
+    table = Table(title="Résultats du benchmark",
+                  show_header=True, header_style="bold cyan")
     table.add_column("Métrique")
     table.add_column("Cache FROID (MongoDB)", justify="right")
     table.add_column("Cache CHAUD (Redis)", justify="right")
     table.add_column("Speedup", justify="right", style="bold green")
 
-    def row(label, fn):
-        c = fn(cold)
-        h = fn(hot)
+    def row(label, cold_value, hot_value):
+        c = cold_value
+        h = hot_value
         sp = f"{c/h:.1f}x" if h > 0 else "—"
         table.add_row(label, f"{c:.2f} ms", f"{h:.2f} ms", sp)
 
-    row("Latence moyenne", statistics.mean)
-    row("Médiane (p50)",   statistics.median)
-    row("p95",             lambda d: sorted(d)[int(len(d)*0.95)])
-    row("p99",             lambda d: sorted(d)[int(len(d)*0.99)])
-    row("Max",             max)
-    row("Min",             min)
+    row("Latence moyenne", summary["cold"]
+        ["mean_ms"], summary["warm"]["mean_ms"])
+    row("Médiane (p50)", summary["cold"]["p50_ms"], summary["warm"]["p50_ms"])
+    row("p95", summary["cold"]["p95_ms"], summary["warm"]["p95_ms"])
+    row("p99", summary["cold"]["p99_ms"], summary["warm"]["p99_ms"])
+    row("Max", summary["cold"]["max_ms"], summary["warm"]["max_ms"])
+    row("Min", summary["cold"]["min_ms"], summary["warm"]["min_ms"])
 
     console.print("\n", table)
 

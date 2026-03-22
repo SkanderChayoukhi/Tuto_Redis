@@ -22,7 +22,10 @@ const state = {
         busy: false,
         activeJob: null,
         recentJobs: [],
-        scripts: []
+        scripts: [],
+        demoMode: true,
+        tutorialNotice: '',
+        benchmarkSummary: null
     },
     lastSample: {
         ts: Date.now(),
@@ -181,6 +184,9 @@ function setupEventListeners() {
         button.addEventListener('click', () => runAutomationScript(button.dataset.script));
     });
     document.getElementById('cancelScriptBtn').addEventListener('click', cancelActiveScript);
+    document.getElementById('downloadLogTxtBtn').addEventListener('click', () => exportCurrentJob('txt'));
+    document.getElementById('downloadJobJsonBtn').addEventListener('click', () => exportCurrentJob('json'));
+    document.getElementById('downloadSummaryJsonBtn').addEventListener('click', exportBenchmarkSummary);
 }
 
 // ===== COMMAND EXECUTOR =====
@@ -503,12 +509,38 @@ function updateAutomationState(data) {
     state.automation.activeJob = data.active_job || null;
     state.automation.recentJobs = data.recent_jobs || [];
     state.automation.scripts = data.scripts || [];
+    state.automation.demoMode = data.demo_mode !== false;
+    state.automation.tutorialNotice = data.tutorial_only_notice || '';
+    const latestBenchmarkJob = state.automation.recentJobs.find(job => job.script === 'benchmark' && job.summary);
+    state.automation.benchmarkSummary = latestBenchmarkJob ? latestBenchmarkJob.summary : null;
 
+    renderDemoModeNotice();
     renderAutomationCards();
     renderActiveScriptJob();
     renderScriptLogs();
+    renderBenchmarkSummary();
     renderRecentJobs();
     updateVisualizationPreview();
+    updateExportButtons();
+}
+
+function renderDemoModeNotice() {
+    const notice = document.getElementById('demoModeNotice');
+    const badge = document.getElementById('demoModeBadge');
+
+    if (!notice || !badge) {
+        return;
+    }
+
+    const enabled = state.automation.demoMode;
+    notice.className = enabled
+        ? 'alert alert-warning d-flex justify-content-between align-items-center mb-4'
+        : 'alert alert-danger d-flex justify-content-between align-items-center mb-4';
+
+    const prefix = '<strong>Tutorial-only automation:</strong> ';
+    const message = state.automation.tutorialNotice || 'Automation endpoints are intended for classroom demos.';
+    notice.querySelector('span').innerHTML = `${prefix}${escapeHtml(message)}`;
+    badge.textContent = enabled ? 'DEMO MODE: ON' : 'DEMO MODE: OFF';
 }
 
 function renderAutomationCards() {
@@ -541,6 +573,9 @@ function renderAutomationCards() {
         }
 
         button.disabled = state.automation.busy;
+        if (!state.automation.demoMode) {
+            button.disabled = true;
+        }
     });
 }
 
@@ -582,6 +617,32 @@ function renderScriptLogs() {
         .map(line => `<div class="output-line">${escapeHtml(line)}</div>`)
         .join('');
     output.scrollTop = output.scrollHeight;
+}
+
+function renderBenchmarkSummary() {
+    const empty = document.getElementById('benchmarkSummaryEmpty');
+    const grid = document.getElementById('benchmarkSummaryGrid');
+    const summary = state.automation.benchmarkSummary;
+
+    if (!empty || !grid) {
+        return;
+    }
+
+    if (!summary || !summary.cold || !summary.warm) {
+        empty.classList.remove('d-none');
+        grid.classList.add('d-none');
+        return;
+    }
+
+    empty.classList.add('d-none');
+    grid.classList.remove('d-none');
+
+    document.getElementById('summaryColdMean').textContent = `${Number(summary.cold.mean_ms || 0).toFixed(2)} ms`;
+    document.getElementById('summaryWarmMean').textContent = `${Number(summary.warm.mean_ms || 0).toFixed(2)} ms`;
+    document.getElementById('summarySpeedup').textContent = `${Number(summary.speedup_x || 0).toFixed(1)}x`;
+    document.getElementById('summaryColdP95').textContent = `${Number(summary.cold.p95_ms || 0).toFixed(2)} ms`;
+    document.getElementById('summaryWarmP95').textContent = `${Number(summary.warm.p95_ms || 0).toFixed(2)} ms`;
+    document.getElementById('summaryHitRatio').textContent = `${Number(summary.cache_stats?.hit_ratio_pct || 0).toFixed(1)}%`;
 }
 
 function renderRecentJobs() {
@@ -662,6 +723,56 @@ function cancelActiveScript() {
             renderScriptLogs();
         })
         .catch(err => console.error('Cancel script error:', err));
+}
+
+function updateExportButtons() {
+    const txtBtn = document.getElementById('downloadLogTxtBtn');
+    const jsonBtn = document.getElementById('downloadJobJsonBtn');
+    const summaryBtn = document.getElementById('downloadSummaryJsonBtn');
+    const hasJob = Boolean(getCurrentJobForExports());
+
+    if (!txtBtn || !jsonBtn || !summaryBtn) {
+        return;
+    }
+
+    txtBtn.disabled = !hasJob;
+    jsonBtn.disabled = !hasJob;
+    summaryBtn.disabled = !state.automation.benchmarkSummary;
+}
+
+function getCurrentJobForExports() {
+    return state.automation.activeJob || state.automation.recentJobs[0] || null;
+}
+
+function exportCurrentJob(format) {
+    const job = getCurrentJobForExports();
+    if (!job) {
+        return;
+    }
+
+    const link = document.createElement('a');
+    link.href = `/api/scripts/jobs/${job.id}/export?format=${encodeURIComponent(format)}`;
+    link.download = '';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+function exportBenchmarkSummary() {
+    const summary = state.automation.benchmarkSummary;
+    if (!summary) {
+        return;
+    }
+
+    const blob = new Blob([JSON.stringify(summary, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'benchmark_summary.json';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
 }
 
 function statusBadgeClass(status) {
