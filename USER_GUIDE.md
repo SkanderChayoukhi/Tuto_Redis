@@ -1,8 +1,8 @@
 # USER GUIDE - Redis Inspector
 
-Ce guide explique litteralement tout ce qui est visible et executable dans l interface UI, ainsi que les scripts et fichiers de code associes.
+Ce guide explique litteralement tout ce qui est visible et executable dans l'interface UI, ainsi que les scripts et fichiers de code associés.
 
-Objectif: pouvoir utiliser le tutoriel en autonomie, faire une demo complete en classe, et comprendre chaque terme technique utilise.
+Objectif: pouvoir utiliser le tutoriel en autonomie et comprendre chaque terme technique utilisé.
 
 ## 1. Avant de commencer
 
@@ -18,9 +18,9 @@ Puis ouvrir:
 1. UI: http://localhost:8000
 2. Health: http://localhost:8000/health
 
-## 2. Vue d ensemble de l interface
+## 2. Vue d ensemble de l'interface
 
-L UI contient 5 onglets principaux:
+L'UI contient 5 onglets principaux:
 
 1. Dashboard
 2. Command Executor
@@ -28,7 +28,7 @@ L UI contient 5 onglets principaux:
 4. Performance
 5. Automation
 
-Chaque onglet est lie a des endpoints backend FastAPI et a des structures Redis precises.
+Chaque onglet est lié à des endpoints backend FastAPI et à des structures Redis précises.
 
 ## 3. Dashboard (metriques et graphs live)
 
@@ -44,7 +44,7 @@ Definitions:
 1. Hit: requete servie depuis Redis.
 2. Miss: requete servie depuis MongoDB puis mise en cache.
 3. Avg Latency: moyenne des latences recentes.
-4. Requests/sec: debit instantane observe.
+4. Requests/sec: debit instantané observé.
 
 ### 3.2 Dataset Status
 
@@ -56,11 +56,9 @@ Ce bloc affiche:
 4. badge Loaded ou Not Loaded
 5. Last update
 
-Source API: endpoint dataset status.
-
 Interpretation:
 
-1. Loaded = donnees presentes en base, demo possible.
+1. Loaded = données présentes en base, demo possible.
 2. Not Loaded = lancer ingestion.
 
 ### 3.3 Graphiques
@@ -78,11 +76,11 @@ Que regarder pendant la demo:
 
 ## 4. Command Executor (CLI Redis integre)
 
-Cet onglet envoie des commandes Redis depuis l UI.
+Cet onglet envoie des commandes Redis depuis l'UI.
 
-Important: il parle directement a Redis. Il ne remplace pas les endpoints applicatifs.
+Important: il parle directement à Redis. Il ne remplace pas les endpoints applicatifs.
 
-### 4.1 Commandes a tester en live
+### 4.1 Commandes à tester
 
 ```redis
 KEYS *
@@ -106,7 +104,7 @@ Solution:
 1. onglet Performance puis Warm Cache
 2. ou appeler /movies/1
 
-## 5. Data Inspector (exploration des cles)
+## 5. Data Inspector (exploration des clés)
 
 Fonction:
 
@@ -114,7 +112,7 @@ Fonction:
 2. afficher type, ttl et valeur
 3. inspecter string, hash, list, set, zset
 
-Cas d usage:
+Cas d'usage:
 
 1. verifier qu une cle movie:{id} existe
 2. verifier TTL et expiration
@@ -194,7 +192,7 @@ Scripts disponibles:
 9. RPS: Requests Per Second
 10. Leaderboard: classement dans un Sorted Set
 11. Rate Limiting: limitation du nombre de requetes par IP
-12. Cache-Aside: pattern applicatif de cache utilise ici
+12. Cache-Aside: pattern applicatif de cache utilisé ici
 
 ## 9. Commandes CLI utiles hors UI
 
@@ -245,18 +243,7 @@ curl http://localhost:8000/api/metrics
 7. static/css/dashboard.css
    1. styles UI
 
-## 11. Checklist de demo 15 min
-
-1. Verifier containers UP
-2. Verifier dataset loaded
-3. Ouvrir Dashboard et commenter les 4 KPIs
-4. Montrer Command Executor avec commandes tests
-5. Montrer Data Inspector
-6. Faire Flush puis Warm dans Performance
-7. Lancer benchmark et visualize depuis Automation
-8. Conclure sur gains et limites
-
-## 12. FAQ rapide
+## 11. FAQ rapide
 
 1. Pourquoi les compteurs ne bougent pas?
    1. verifier polling UI
@@ -267,18 +254,3 @@ curl http://localhost:8000/api/metrics
 3. Pourquoi ingest peut echouer?
    1. timeout internet sur le download initial
    2. relancer, archive locale reutilisable
-
-## 13. Message final pour la classe
-
-Ce tutoriel montre en pratique:
-
-1. comment un cache Redis transforme les performances
-2. comment instrumenter et visualiser un systeme NoSQL
-3. comment relier theorie Big Data et demonstration live
-
-Si la classe veut reproduire rapidement:
-
-1. cloner le repo
-2. docker compose up --build
-3. docker compose exec api python src/ingest.py
-4. ouvrir http://localhost:8000
