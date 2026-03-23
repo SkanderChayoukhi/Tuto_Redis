@@ -1,7 +1,6 @@
 """
 src/benchmark.py — Mesure la performance du cache Redis vs MongoDB.
 
-Ce script est la pièce maîtresse pour l'oral :
 il démontre concrètement l'apport du cache sur la vélocité (V du BigData).
 
 Usage :

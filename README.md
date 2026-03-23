@@ -45,7 +45,7 @@ Client (Python / curl)
 │ Cache │ │ Source  │
 │ (RAM) │ │ (disk)  │
 └───────┘ └─────────┘
-   # Redis Inspector Pro - Tutoriel NoSQL Redis (Big Data)
+   # Redis Inspector  - Tutoriel NoSQL Redis (Big Data)
 
    Tutoriel conteneurise pour la presentation orale du mardi 24/03 apres-midi.
 

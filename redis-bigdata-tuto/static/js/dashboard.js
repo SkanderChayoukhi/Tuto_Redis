@@ -1,5 +1,5 @@
 // =========================================
-// REDIS INSPECTOR PRO - DASHBOARD JAVASCRIPT
+// Redis Inspector  - DASHBOARD JAVASCRIPT
 // =========================================
 
 // Global state
@@ -825,4 +825,4 @@ function formatBytes(bytes) {
     return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
 }
 
-console.log('Redis Inspector Pro loaded');
+console.log('Redis Inspector  loaded');

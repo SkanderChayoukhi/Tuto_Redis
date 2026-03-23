@@ -1,4 +1,4 @@
-# USER GUIDE - Redis Inspector Pro
+# USER GUIDE - Redis Inspector
 
 Ce guide explique litteralement tout ce qui est visible et executable dans l interface UI, ainsi que les scripts et fichiers de code associes.
 

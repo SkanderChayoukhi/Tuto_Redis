@@ -6,7 +6,7 @@ Architecture BigData :
                    → MongoDB (cache miss) → Redis (populate) → réponse
 
 Dashboard :
-  Browser → /dashboard → Redis Inspector Pro (real-time metrics, command executor)
+  Browser → /dashboard → Redis Inspector  (real-time metrics, command executor)
 """
 
 import asyncio
@@ -196,7 +196,7 @@ async def lifespan(app: FastAPI):
     log.info("✓ Connexions fermées")
 
 
-app = FastAPI(title="Redis Inspector Pro",
+app = FastAPI(title="Redis Inspector ",
               description="Interactive Redis tutorial", lifespan=lifespan)
 
 # Mount static files
